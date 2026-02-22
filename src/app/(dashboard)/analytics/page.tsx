@@ -51,7 +51,6 @@ import TrendChart from '@/components/charts/TrendChart';
 import {
   formatCurrency,
   formatPercent,
-  formatCompactNumber,
   getChangeColor,
   cn,
   formatDate,
@@ -216,7 +215,7 @@ export default function AnalyticsPage() {
   const [sectorFilter, setSectorFilter] = useState('all');
   const [sortField, setSortField] = useState<SortField>('marketValue');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y'>('3M');
+  const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y'>('1D');
 
   useEffect(() => {
     async function fetchAnalytics() {
@@ -395,7 +394,7 @@ export default function AnalyticsPage() {
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Portfolio Value</span>
             <Target className="w-4 h-4 text-indigo-400" />
           </div>
-          <p className="text-xl font-bold text-white">${formatCompactNumber(performance.totalValue)}</p>
+          <p className="text-xl font-bold text-white">{formatCurrency(performance.totalValue)}</p>
           <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrency(performance.totalCost)}</p>
         </CardContent>
       </Card>

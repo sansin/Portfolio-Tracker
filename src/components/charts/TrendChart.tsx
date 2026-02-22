@@ -61,7 +61,7 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function TrendChart({ symbol, symbols, title, className, externalPeriod, onPeriodChange, hideTimeSelector }: TrendChartProps) {
-  const [internalPeriod, setInternalPeriod] = useState<TimePeriod>('3M');
+  const [internalPeriod, setInternalPeriod] = useState<TimePeriod>('1D');
   const period = externalPeriod ?? internalPeriod;
   const handlePeriodChange = (p: TimePeriod) => {
     if (onPeriodChange) onPeriodChange(p);

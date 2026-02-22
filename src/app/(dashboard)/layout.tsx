@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/layout/sidebar';
+import { BottomNav } from '@/components/layout/bottom-nav';
 import { Topbar } from '@/components/layout/topbar';
 import { MainContent } from '@/components/layout/main-content';
 import { StockDetailProvider } from '@/contexts/stock-detail-context';
@@ -28,9 +29,10 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-zinc-950">
       <Sidebar />
+      <BottomNav />
       <MainContent>
         <Topbar user={profile ? { display_name: profile.display_name, email: user.email! } : null} />
-        <main className="p-6">
+        <main className="p-6 pb-20 md:pb-6">
           <StockDetailProvider>{children}</StockDetailProvider>
         </main>
       </MainContent>

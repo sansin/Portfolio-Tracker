@@ -270,7 +270,7 @@ export default function PortfoliosPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-zinc-100">Portfolios</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Portfolios</h1>
         <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" />New Portfolio</Button>
       </div>
 
@@ -325,28 +325,28 @@ export default function PortfoliosPage() {
 
           {/* Summary KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="bg-zinc-800/50 border-zinc-700/50">
-              <CardContent className="p-4">
+            <Card className="bg-gradient-to-br from-indigo-500/10 via-zinc-800/50 to-zinc-800/50 border-indigo-500/20">
+              <CardContent className="p-5">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Total Value</p>
-                <p className="text-xl font-bold text-white tabular-nums">{formatCurrencyWhole(summary.totalValue)}</p>
+                <p className="text-2xl font-bold text-white tabular-nums">{formatCurrencyWhole(summary.totalValue)}</p>
                 <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrencyWhole(summary.totalCost)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Total P&L</p>
                 <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.totalGain))}>{formatCurrencyWhole(summary.totalGain)}</p>
                 <p className={cn('text-xs mt-0.5', getChangeColor(summary.totalGainPct))}>{formatPercentWhole(summary.totalGainPct)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Day Change</p>
                 <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.dayChange))}>{formatCurrencyWhole(summary.dayChange)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Holdings</p>
                 <p className="text-xl font-bold text-white tabular-nums">{summary.count}</p>
                 <p className="text-xs text-zinc-500 mt-0.5">{selectedPortfolios.size} portfolio{selectedPortfolios.size !== 1 ? 's' : ''} selected</p>
@@ -375,6 +375,52 @@ export default function PortfoliosPage() {
                   {holdingDetails.length === 0 ? 'No holdings yet. Add transactions to your portfolios.' : 'No holdings match your filters.'}
                 </div>
               ) : (
+                <>
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3 p-4">
+                  {filteredHoldings.map((h) => (
+                    <div key={`${h.symbol}-${h.portfolioId}`} className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <button onClick={() => openStockDetail(h.symbol)} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: h.portfolioColor }} />
+                          <span className="text-sm font-semibold text-white">{h.symbol}</span>
+                          <span className="text-xs text-zinc-500 truncate max-w-[100px]">{h.portfolioName}</span>
+                        </button>
+                        <span className="text-sm font-medium text-white tabular-nums">{formatCurrency(h.marketValue)}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <p className="text-zinc-500">Qty</p>
+                          <p className="text-zinc-300 tabular-nums">{h.quantity.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500">Avg Cost</p>
+                          <p className="text-zinc-300 tabular-nums">{formatCurrency(h.avgCost)}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500">Price</p>
+                          <p className="text-zinc-300 tabular-nums">{formatCurrency(h.currentPrice)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
+                        <div>
+                          <span className="text-zinc-500 mr-1">P&L:</span>
+                          <span className={cn('font-medium tabular-nums', getChangeColor(h.gain))}>
+                            {formatCurrency(h.gain)} ({formatPercent(h.gainPercent)})
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 mr-1">Day:</span>
+                          <span className={cn('font-medium tabular-nums', getChangeColor(h.dayChangePercent))}>
+                            {formatPercent(h.dayChangePercent)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-zinc-700/50">
@@ -445,6 +491,8 @@ export default function PortfoliosPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                </>
               )}
             </div>
           </Card>

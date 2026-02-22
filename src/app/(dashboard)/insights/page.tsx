@@ -93,7 +93,7 @@ export default function InsightsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Brain className="w-7 h-7 text-indigo-400" />
             AI Insights
           </h1>

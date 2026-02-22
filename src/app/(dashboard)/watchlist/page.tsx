@@ -22,7 +22,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { createClient } from '@/lib/supabase/client';
-import { formatCurrency, formatPercent, cn, getChangeColor } from '@/lib/utils';
+import { formatCurrency, formatPercent, cn, getChangeColor, formatVolume, formatMarketCap } from '@/lib/utils';
 import { useQuoteStore } from '@/stores/quote-store';
 import { useStockDetail } from '@/contexts/stock-detail-context';
 
@@ -250,7 +250,7 @@ export default function WatchlistPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Watchlist</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Watchlist</h1>
           <p className="text-zinc-400 text-sm mt-0.5">
             Tracking {items.length} symbol{items.length !== 1 ? 's' : ''}
           </p>
@@ -510,16 +510,4 @@ export default function WatchlistPage() {
   );
 }
 
-function formatVolume(v: number): string {
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return v.toString();
-}
 
-function formatMarketCap(v: number): string {
-  if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
-  return `$${v.toLocaleString()}`;
-}

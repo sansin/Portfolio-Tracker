@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownItem } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui-store';
+import { useStockDetail } from '@/contexts/stock-detail-context';
 
 interface TopbarProps {
   user?: { display_name: string | null; email: string } | null;
@@ -15,6 +16,8 @@ interface TopbarProps {
 export function Topbar({ user }: TopbarProps) {
   const router = useRouter();
   const { setSidebarCollapsed } = useUIStore();
+  const { openStockDetail } = useStockDetail();
+  const inputRef = React.useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<{ symbol: string; name: string }[]>([]);
   const [showResults, setShowResults] = React.useState(false);
@@ -37,6 +40,18 @@ export function Topbar({ user }: TopbarProps) {
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Cmd+K / Ctrl+K shortcut to focus search
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   function handleSearchChange(value: string) {
@@ -66,7 +81,7 @@ export function Topbar({ user }: TopbarProps) {
     setShowResults(false);
     setSearchQuery('');
     setSearchResults([]);
-    router.push(`/insights?tab=stock_analysis&symbol=${encodeURIComponent(symbol)}`);
+    openStockDetail(symbol);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -91,7 +106,7 @@ export function Topbar({ user }: TopbarProps) {
       <Button
         variant="ghost"
         size="icon"
-        className="text-zinc-400 lg:hidden mr-2"
+        className="text-zinc-400 md:hidden mr-2"
         onClick={() => setSidebarCollapsed(false)}
         aria-label="Open navigation menu"
       >
@@ -101,7 +116,8 @@ export function Topbar({ user }: TopbarProps) {
       {/* Search */}
       <div className="flex-1 max-w-md relative" ref={searchRef}>
         <Input
-          placeholder="Search stocks... (e.g. AAPL)"
+          ref={inputRef}
+          placeholder="Search stocks... ⌘K"
           icon={<Search className="h-4 w-4" />}
           className="bg-zinc-900 border-zinc-800"
           value={searchQuery}

@@ -169,9 +169,9 @@ export default function TrendChart({ symbol, symbols, title, className, external
 
       {/* Chart area */}
       {loading ? (
-        <Skeleton className="h-[300px] w-full rounded-lg" />
+        <Skeleton className="h-[250px] sm:h-[300px] lg:h-[400px] w-full rounded-lg" />
       ) : data.length === 0 ? (
-        <div className="h-[300px] flex items-center justify-center text-zinc-500">
+        <div className="h-[250px] sm:h-[300px] lg:h-[400px] flex items-center justify-center text-zinc-500">
           <p>No chart data available for this period</p>
         </div>
       ) : (

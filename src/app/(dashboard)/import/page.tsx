@@ -159,7 +159,7 @@ export default function ImportPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Import Transactions</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Import Transactions</h1>
         <p className="text-sm text-zinc-500 mt-1">Import trades from your broker via CSV, screenshot, or paste.</p>
       </div>
 

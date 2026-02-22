@@ -380,7 +380,7 @@ export default function PortfolioDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalValue)}</p></CardContent></Card>
+        <Card className="bg-gradient-to-br from-indigo-500/10 via-zinc-800/50 to-zinc-800/50 border-indigo-500/20"><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-3xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalValue)}</p></CardContent></Card>
         <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Cost</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalCost)}</p></CardContent></Card>
         <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Unrealized P&L</p><p className={cn('text-2xl font-bold tabular-nums', getChangeColor(totalPL))}>{formatCurrencyWhole(totalPL)} <span className="text-base">({formatPercentWhole(totalPLPercent)})</span></p></CardContent></Card>
       </div>
@@ -401,16 +401,54 @@ export default function PortfolioDetailPage() {
             {portfolio.holdings.length === 0 ? (
               <EmptyState icon={<BarChart3 className="h-12 w-12" />} title="No holdings" description="Add a transaction to see your holdings here." action={<Button onClick={() => setShowAddTx(true)} size="sm"><Plus className="h-4 w-4" />Add Transaction</Button>} />
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3 p-4">
+                {portfolio.holdings.map((h) => (
+                  <div key={h.assetId} className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => openStockDetail(h.symbol)} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                        <span className="text-sm font-semibold text-white">{h.symbol}</span>
+                        <span className="text-xs text-zinc-500 truncate max-w-[120px]">{h.name}</span>
+                      </button>
+                      <span className="text-sm font-medium text-white tabular-nums">{formatCurrency(h.totalValue)}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <p className="text-zinc-500">Shares</p>
+                        <p className="text-zinc-300 tabular-nums">{formatQuantity(h.quantity)}</p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">Avg Cost</p>
+                        <p className="text-zinc-300 tabular-nums">{formatCurrency(h.avgCost)}</p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">Price</p>
+                        <p className="text-zinc-300 tabular-nums">{formatCurrency(h.currentPrice)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
+                      <div>
+                        <span className="text-zinc-500 mr-1">P&L:</span>
+                        <span className={cn('font-medium tabular-nums', getChangeColor(h.unrealizedPL))}>
+                          {formatCurrency(h.unrealizedPL)} ({formatPercent(h.unrealizedPLPercent)})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-zinc-800">
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Asset</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Shares</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Avg Cost</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Price</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Value</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">P&L</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Asset</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Shares</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Avg Cost</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Price</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Value</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">P&L</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -430,6 +468,7 @@ export default function PortfolioDetailPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -445,13 +484,13 @@ export default function PortfolioDetailPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-zinc-800">
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Date</th>
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Type</th>
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Asset</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Qty</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Price</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Total</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Actions</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Type</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Asset</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Qty</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Price</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Total</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -515,7 +554,7 @@ export default function PortfolioDetailPage() {
         </ModalHeader>
         <form onSubmit={handleAddTransaction}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Symbol" placeholder="AAPL" value={txForm.symbol} onChange={(e) => setTxForm({ ...txForm, symbol: e.target.value })} onBlur={async () => {
                 const sym = txForm.symbol.trim().toUpperCase();
                 if (sym && !txForm.price_per_unit) {
@@ -529,11 +568,11 @@ export default function PortfolioDetailPage() {
               }} required />
               <Select label="Type" name="transaction_type" value={txForm.transaction_type} onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value })} options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }, { value: 'dividend', label: 'Dividend' }, { value: 'transfer_in', label: 'Transfer In' }, { value: 'transfer_out', label: 'Transfer Out' }]} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Quantity" type="number" step="any" placeholder="100" value={txForm.quantity} onChange={(e) => setTxForm({ ...txForm, quantity: e.target.value })} required />
               <Input label="Price per unit" type="number" step="any" placeholder="150.00 (auto-fills)" value={txForm.price_per_unit} onChange={(e) => setTxForm({ ...txForm, price_per_unit: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" placeholder="0.00" value={txForm.fees} onChange={(e) => setTxForm({ ...txForm, fees: e.target.value })} />
               <Input label="Date" type="date" value={txForm.transaction_date} onChange={(e) => setTxForm({ ...txForm, transaction_date: e.target.value })} required />
             </div>
@@ -554,7 +593,7 @@ export default function PortfolioDetailPage() {
         </ModalHeader>
         <form onSubmit={handleEditTransaction}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Symbol" value={editingTx?.asset?.symbol || 'N/A'} disabled />
               <Select
                 label="Type"
@@ -569,11 +608,11 @@ export default function PortfolioDetailPage() {
                 ]}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
               <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" value={editForm.fees} onChange={(e) => setEditForm({ ...editForm, fees: e.target.value })} />
               <Input label="Date" type="date" value={editForm.transaction_date} onChange={(e) => setEditForm({ ...editForm, transaction_date: e.target.value })} required />
             </div>

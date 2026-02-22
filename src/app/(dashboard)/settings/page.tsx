@@ -91,7 +91,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl">
-      <h1 className="text-2xl font-bold text-zinc-100">Settings</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Settings</h1>
 
       <Card>
         <CardHeader>

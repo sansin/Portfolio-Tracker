@@ -40,7 +40,7 @@ export function Sidebar() {
 
   // Auto-close sidebar on mobile after navigation
   React.useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
       setSidebarCollapsed(true);
     }
   }, [pathname, setSidebarCollapsed]);
@@ -50,18 +50,16 @@ export function Sidebar() {
       {/* Mobile backdrop */}
       {!collapsed && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
           onClick={() => setSidebarCollapsed(true)}
         />
       )}
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-zinc-800 bg-zinc-950 transition-all duration-300',
+          'fixed inset-y-0 left-0 z-40 hidden md:flex flex-col border-r border-zinc-800 bg-zinc-950 transition-all duration-300',
           // Desktop: collapsed = narrow, expanded = wide
-          collapsed ? 'lg:w-16' : 'lg:w-64',
-          // Mobile: hidden by default, shown as overlay when not collapsed
-          collapsed ? '-translate-x-full lg:translate-x-0' : 'w-64 translate-x-0'
+          collapsed ? 'md:w-16' : 'md:w-64'
         )}
       >
       {/* Logo */}
@@ -77,7 +75,7 @@ export function Sidebar() {
         {/* Close button on mobile */}
         <button
           onClick={() => setSidebarCollapsed(true)}
-          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors lg:hidden"
+          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors md:hidden"
         >
           <X className="h-4 w-4" />
         </button>
@@ -85,7 +83,7 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           className={cn(
-            'p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors hidden lg:block',
+            'p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors hidden md:block',
             collapsed && 'mx-auto'
           )}
         >

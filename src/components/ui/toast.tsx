@@ -75,6 +75,9 @@ function ToastItem({ toast: t, icon, style, onClose }: { toast: Toast; icon: Rea
 
   return (
     <div
+      role="alert"
+      aria-live="polite"
+      aria-atomic="true"
       className={cn(
         'flex items-start gap-3 rounded-lg border p-4 shadow-lg backdrop-blur-sm animate-in slide-in-from-right-full duration-300',
         style

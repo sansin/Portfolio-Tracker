@@ -175,7 +175,7 @@ export default function TransactionsPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-zinc-100">Transactions</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Transactions</h1>
           <div className="relative hidden sm:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
             <input
@@ -260,15 +260,15 @@ export default function TransactionsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-zinc-800">
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Date</th>
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Portfolio</th>
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Type</th>
-                      <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Asset</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Qty</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Price</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Fees</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Total</th>
-                      <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Actions</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Portfolio</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Type</th>
+                      <th className="text-left text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Asset</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Qty</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Price</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Fees</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Total</th>
+                      <th className="text-right text-xs font-medium uppercase tracking-wide text-zinc-500 px-6 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -344,7 +344,7 @@ export default function TransactionsPage() {
         </ModalHeader>
         <form onSubmit={handleEditSubmit}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Symbol" value={editingTx?.asset?.symbol || 'N/A'} disabled />
               <Select
                 label="Portfolio"
@@ -353,7 +353,7 @@ export default function TransactionsPage() {
                 options={portfolios.map((p) => ({ value: p.id, label: p.name }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Type"
                 value={editForm.transaction_type}
@@ -367,11 +367,11 @@ export default function TransactionsPage() {
                 ]}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
               <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" value={editForm.fees} onChange={(e) => setEditForm({ ...editForm, fees: e.target.value })} />
               <Input label="Date" type="date" value={editForm.transaction_date} onChange={(e) => setEditForm({ ...editForm, transaction_date: e.target.value })} required />
             </div>
@@ -392,7 +392,7 @@ export default function TransactionsPage() {
         </ModalHeader>
         <form onSubmit={handleAddSubmit}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Portfolio"
                 value={addForm.portfolio_id}
@@ -415,7 +415,7 @@ export default function TransactionsPage() {
                 }
               }} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Type"
                 value={addForm.transaction_type}
@@ -430,11 +430,11 @@ export default function TransactionsPage() {
               />
               <Input label="Quantity" type="number" step="any" value={addForm.quantity} onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Price per unit" type="number" step="any" placeholder="auto-fills" value={addForm.price_per_unit} onChange={(e) => setAddForm({ ...addForm, price_per_unit: e.target.value })} required />
               <Input label="Fees" type="number" step="any" value={addForm.fees} onChange={(e) => setAddForm({ ...addForm, fees: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Date" type="date" value={addForm.transaction_date} onChange={(e) => setAddForm({ ...addForm, transaction_date: e.target.value })} required />
               <Input label="Notes (optional)" placeholder="Any notes..." value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />
             </div>

@@ -13,8 +13,7 @@ import {
   Globe,
   Hash,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { formatCurrency, formatPercent } from '@/lib/utils';
+import { cn, formatCurrency, formatPercent, formatVolume, formatMarketCap } from '@/lib/utils';
 import TrendChart from '@/components/charts/TrendChart';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -90,19 +89,7 @@ export default function StockDetailModal({ symbol, onClose }: StockDetailModalPr
   const priceColor = (detail?.change ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
   const priceBg = (detail?.change ?? 0) >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10';
 
-  function formatVolume(v: number): string {
-    if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-    if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-    if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-    return v.toString();
-  }
 
-  function formatMarketCap(v: number): string {
-    if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
-    if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-    return `$${v.toLocaleString()}`;
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-16">

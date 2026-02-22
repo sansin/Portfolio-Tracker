@@ -38,6 +38,7 @@ import {
   ArrowRight,
   Briefcase,
   DollarSign,
+  RefreshCw,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -157,6 +158,15 @@ interface EarningsEvent {
 type SortField = 'symbol' | 'marketValue' | 'unrealizedPL' | 'unrealizedPLPercent' | 'weight' | 'dayChangePercent';
 type SortDir = 'asc' | 'desc';
 
+function formatRelativeTime(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
 // ── Tabs Config ────────────────────────────────────────────────────────────
 
 const ANALYTICS_TABS = [
@@ -212,6 +222,7 @@ export default function AnalyticsPage() {
   const [topMovers, setTopMovers] = useState<TopMover[]>([]);
   const [earnings, setEarnings] = useState<EarningsEvent[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Filters & sorting
   const [sectorFilter, setSectorFilter] = useState('all');
@@ -219,7 +230,7 @@ export default function AnalyticsPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y'>('1D');
 
-  useEffect(() => {
+  const fetchAllData = useCallback(async () => {
     async function fetchAnalytics() {
       try {
         const res = await fetch('/api/analytics/kpis');
@@ -236,6 +247,7 @@ export default function AnalyticsPage() {
         setPortfolioBreakdown(data.portfolioBreakdown || []);
         setMonthlyReturns(data.monthlyReturns || []);
         setTopMovers(data.topMovers || []);
+        setLastUpdated(new Date());
       } catch (err) {
         console.error('Analytics fetch error:', err);
       } finally {
@@ -267,10 +279,17 @@ export default function AnalyticsPage() {
       }
     }
 
-    fetchAnalytics();
-    fetchEarnings();
-    fetchRecentTransactions();
+    await Promise.all([fetchAnalytics(), fetchEarnings(), fetchRecentTransactions()]);
   }, []);
+
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  const handleRefresh = useCallback(async () => {
+    setLoading(true);
+    await fetchAllData();
+  }, [fetchAllData]);
 
   // Derived data
   const trendSymbols = useMemo(() => holdings, [holdings]);
@@ -336,7 +355,7 @@ export default function AnalyticsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Analytics</h1>
           <p className="text-zinc-400 mt-1">Loading your portfolio analytics…</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -358,7 +377,7 @@ export default function AnalyticsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Analytics</h1>
           <p className="text-zinc-400 mt-1">Deep insights into your portfolio performance</p>
         </div>
         <EmptyState
@@ -390,19 +409,19 @@ export default function AnalyticsPage() {
 
   const KPICards = (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <Card className="bg-zinc-800/50 border-zinc-700/50">
-        <CardContent className="p-4">
+      <Card className="bg-gradient-to-br from-indigo-500/10 via-zinc-800/50 to-zinc-800/50 border-indigo-500/20">
+        <CardContent className="p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Portfolio Value</span>
             <Target className="w-4 h-4 text-indigo-400" />
           </div>
-          <p className="text-xl font-bold text-white">{formatCurrencyWhole(performance.totalValue)}</p>
+          <p className="text-2xl font-bold text-white">{formatCurrencyWhole(performance.totalValue)}</p>
           <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrencyWhole(performance.totalCost)}</p>
         </CardContent>
       </Card>
 
       <Card className="bg-zinc-800/50 border-zinc-700/50">
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Total P&L</span>
             {performance.totalGain >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
@@ -417,7 +436,7 @@ export default function AnalyticsPage() {
       </Card>
 
       <Card className="bg-zinc-800/50 border-zinc-700/50">
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Day Change</span>
             {performance.dayChange >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
@@ -432,7 +451,7 @@ export default function AnalyticsPage() {
       </Card>
 
       <Card className="bg-zinc-800/50 border-zinc-700/50">
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Diversification</span>
             <Shield className="w-4 h-4 text-indigo-400" />
@@ -611,13 +630,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={monthlyReturns}>
-                  <defs>
-                    <linearGradient id="returnGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+                <BarChart data={monthlyReturns}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
                   <XAxis dataKey="month" stroke="#52525b" tick={{ fill: '#71717a', fontSize: 11 }} />
                   <YAxis stroke="#52525b" tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
@@ -626,8 +639,12 @@ export default function AnalyticsPage() {
                     labelStyle={{ color: '#ffffff' }}
                     formatter={(value: any) => [`${Number(value).toFixed(2)}%`, 'Return']}
                   />
-                  <Area type="monotone" dataKey="return" stroke="#6366f1" fill="url(#returnGrad)" strokeWidth={2} />
-                </AreaChart>
+                  <Bar dataKey="return" radius={[4, 4, 0, 0]}>
+                    {monthlyReturns.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.return >= 0 ? '#10b981' : '#ef4444'} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
@@ -682,7 +699,53 @@ export default function AnalyticsPage() {
 
       {/* Holdings Table */}
       <Card className="bg-zinc-800/50 border-zinc-700/50 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3 p-4">
+          {filteredHoldings.map((h) => (
+            <div key={h.symbol} className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <button onClick={() => openStockDetail(h.symbol)} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                  <span className="text-sm font-semibold text-white">{h.symbol}</span>
+                  <span className="text-xs text-zinc-500 truncate max-w-[120px]">{h.name}</span>
+                </button>
+                <span className="text-sm font-medium text-white tabular-nums">{formatCurrency(h.marketValue)}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-zinc-500">Qty</p>
+                  <p className="text-zinc-300 tabular-nums">{h.quantity.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-zinc-500">Avg Cost</p>
+                  <p className="text-zinc-300 tabular-nums">{formatCurrency(h.avgCost)}</p>
+                </div>
+                <div>
+                  <p className="text-zinc-500">Price</p>
+                  <p className="text-zinc-300 tabular-nums">{formatCurrency(h.currentPrice)}</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
+                <div>
+                  <span className="text-zinc-500 mr-1">P&L:</span>
+                  <span className={cn('font-medium tabular-nums', getChangeColor(h.unrealizedPL))}>
+                    {formatCurrency(h.unrealizedPL)} ({h.unrealizedPLPercent >= 0 ? '+' : ''}{h.unrealizedPLPercent.toFixed(1)}%)
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 mr-1">Day:</span>
+                  <span className={cn('font-medium tabular-nums', getChangeColor(h.dayChangePercent))}>
+                    {h.dayChangePercent >= 0 ? '+' : ''}{h.dayChangePercent.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {filteredHoldings.length === 0 && (
+            <p className="text-center text-zinc-500 py-4">No holdings match your filter</p>
+          )}
+        </div>
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-700/50">
@@ -1023,7 +1086,7 @@ export default function AnalyticsPage() {
       {/* Header + Unified Time Range */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Analytics</h1>
           <p className="text-zinc-400 text-sm mt-0.5">
             {holdingsCount} holdings across {riskMetrics?.portfolioCount ?? 0} portfolio{(riskMetrics?.portfolioCount ?? 0) !== 1 ? 's' : ''}
           </p>
@@ -1045,6 +1108,21 @@ export default function AnalyticsPage() {
           ))}
         </div>
       </div>
+
+      {/* Data Freshness Indicator */}
+      {lastUpdated && (
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Updated {formatRelativeTime(lastUpdated)}</span>
+          <button
+            onClick={handleRefresh}
+            className="text-zinc-500 hover:text-zinc-300 transition-colors ml-1"
+            title="Refresh data"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       {KPICards}
@@ -1089,7 +1167,14 @@ export default function AnalyticsPage() {
                       <p className="text-zinc-500 text-xs">Q{e.quarter} {e.year}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-zinc-300 text-xs font-medium">{dayLabel}</p>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <p className="text-zinc-300 text-xs font-medium">{dayLabel}</p>
+                        {diffDays <= 0 ? (
+                          <Badge variant="danger" className="text-[10px] px-1.5 py-0">Today</Badge>
+                        ) : diffDays <= 3 ? (
+                          <Badge variant="warning" className="text-[10px] px-1.5 py-0">{diffDays}d away</Badge>
+                        ) : null}
+                      </div>
                       <p className="text-zinc-500 text-xs">
                         {new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         {timeLabel && ` · ${timeLabel}`}

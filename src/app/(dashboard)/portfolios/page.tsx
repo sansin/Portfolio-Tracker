@@ -299,11 +299,14 @@ export default function PortfoliosPage() {
             {portfolios.map((p) => {
               const isSelected = selectedPortfolios.has(p.id);
               return (
-                <button
+                <div
                   key={p.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => togglePortfolio(p.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePortfolio(p.id); } }}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border cursor-pointer',
                     isSelected
                       ? 'border-opacity-40 text-white'
                       : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300'
@@ -318,7 +321,7 @@ export default function PortfoliosPage() {
                     <button onClick={(e) => { e.stopPropagation(); openEditModal(p.id); }} className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 transition-colors" title="Edit"><Pencil className="w-3 h-3" /></button>
                     <button onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(p.id); }} className="p-0.5 rounded text-zinc-500 hover:text-red-400 transition-colors" title="Delete"><Trash2 className="w-3 h-3" /></button>
                   </span>
-                </button>
+                </div>
               );
             })}
           </div>

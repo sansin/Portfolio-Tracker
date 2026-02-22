@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from '@/components/ui/toast';
 import { createClient } from '@/lib/supabase/client';
-import { formatCurrency, formatPercent, formatDate, cn, getChangeColor, formatQuantity } from '@/lib/utils';
+import { formatCurrency, formatCurrencyWhole, formatPercent, formatPercentWhole, formatDate, cn, getChangeColor, formatQuantity } from '@/lib/utils';
 import { useQuoteStore, isMarketOpen, formatRelativeTime } from '@/stores/quote-store';
 import { ROUTES } from '@/lib/constants';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -380,9 +380,9 @@ export default function PortfolioDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrency(portfolio.totalValue)}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Cost</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrency(portfolio.totalCost)}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Unrealized P&L</p><p className={cn('text-2xl font-bold tabular-nums', getChangeColor(totalPL))}>{formatCurrency(totalPL)} <span className="text-base">({formatPercent(totalPLPercent)})</span></p></CardContent></Card>
+        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalValue)}</p></CardContent></Card>
+        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Cost</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalCost)}</p></CardContent></Card>
+        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Unrealized P&L</p><p className={cn('text-2xl font-bold tabular-nums', getChangeColor(totalPL))}>{formatCurrencyWhole(totalPL)} <span className="text-base">({formatPercentWhole(totalPLPercent)})</span></p></CardContent></Card>
       </div>
 
       <Tabs

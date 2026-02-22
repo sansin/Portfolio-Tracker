@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { usePortfolioStore } from '@/stores/portfolio-store';
 import { createClient } from '@/lib/supabase/client';
-import { formatCurrency, formatPercent, cn, getChangeColor } from '@/lib/utils';
+import { formatCurrency, formatCurrencyWhole, formatPercent, formatPercentWhole, cn, getChangeColor } from '@/lib/utils';
 import { PORTFOLIO_COLORS } from '@/lib/constants';
 import { buildHoldingsFromTransactions, computePortfolioValues, getUniqueSymbols, ComputedHolding } from '@/lib/holdings';
 import { useStockDetail } from '@/contexts/stock-detail-context';
@@ -328,21 +328,21 @@ export default function PortfoliosPage() {
             <Card className="bg-zinc-800/50 border-zinc-700/50">
               <CardContent className="p-4">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Total Value</p>
-                <p className="text-xl font-bold text-white tabular-nums">{formatCurrency(summary.totalValue)}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrency(summary.totalCost)}</p>
+                <p className="text-xl font-bold text-white tabular-nums">{formatCurrencyWhole(summary.totalValue)}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrencyWhole(summary.totalCost)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">
               <CardContent className="p-4">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Total P&L</p>
-                <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.totalGain))}>{formatCurrency(summary.totalGain)}</p>
-                <p className={cn('text-xs mt-0.5', getChangeColor(summary.totalGainPct))}>{formatPercent(summary.totalGainPct)}</p>
+                <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.totalGain))}>{formatCurrencyWhole(summary.totalGain)}</p>
+                <p className={cn('text-xs mt-0.5', getChangeColor(summary.totalGainPct))}>{formatPercentWhole(summary.totalGainPct)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">
               <CardContent className="p-4">
                 <p className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">Day Change</p>
-                <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.dayChange))}>{formatCurrency(summary.dayChange)}</p>
+                <p className={cn('text-xl font-bold tabular-nums', getChangeColor(summary.dayChange))}>{formatCurrencyWhole(summary.dayChange)}</p>
               </CardContent>
             </Card>
             <Card className="bg-zinc-800/50 border-zinc-700/50">

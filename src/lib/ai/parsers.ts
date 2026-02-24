@@ -136,10 +136,13 @@ function parseDate(val: any): string {
 // ─── Rules-based CSV parser ────────────────────────────────────────────────
 
 export async function parseCSV(csvText: string, broker: string): Promise<ParsedTransactions> {
-  const parsed = Papa.parse(csvText, {
+  // Strip BOM and leading/trailing whitespace
+  const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+
+  const parsed = Papa.parse(cleanText, {
     header: true,
     skipEmptyLines: true,
-    transformHeader: (h: string) => h.trim(),
+    transformHeader: (h: string) => h.trim().replace(/^["']+|["']+$/g, ''),
   });
 
   if (parsed.errors.length > 0 && parsed.data.length === 0) {
@@ -232,57 +235,78 @@ export async function parsePastedText(text: string, _broker: string): Promise<Pa
 
   const transactions: ParsedTransactions['transactions'] = [];
 
-  // Pattern 1: "AAPL 10" or "AAPL 10 shares" or "AAPL: 10"
-  const tickerQtyPattern = /^([A-Z]{1,5})[:\s]+(\d+\.?\d*)\s*(shares?)?/i;
+  // Pattern 1 (action-first): "Buy 10 AAPL @ $150.00 on 2025-01-15" / "Bought AAPL 50 @ 175"
+  const actionFirstPattern = /^(buy|sell|bought|sold)\s+(?:(\d+\.?\d*)\s+)?([A-Z]{1,5})(?:\s+(\d+\.?\d*))?(?:\s*(?:shares?))?(?:\s*(?:@|at)\s*\$?([\d.]+))?(?:\s*(?:on|dated?)\s+(.+?))?\s*$/i;
 
-  // Pattern 2: "Buy 10 AAPL @ $150.00 on 2025-01-15"
-  const fullPattern = /^(buy|sell|bought|sold)\s+(\d+\.?\d*)\s+([A-Z]{1,5})\s*@?\s*\$?([\d.]+)?\s*(?:on\s+(.+))?$/i;
+  // Pattern 2 (symbol-first): "AAPL Buy 100 shares at $150 on 2025-01-15" / "AAPL 100 @ 150" / "AAPL: 10"
+  const symbolFirstPattern = /^([A-Z]{1,5})[:\s]+(?:(buy|sell|bought|sold)\s+)?(?:(\d+\.?\d*)\s*(?:shares?)?)?(?:\s*(?:@|at)\s*\$?([\d.]+))?(?:\s*(?:on|dated?)\s+(.+?))?\s*$/i;
 
-  // Pattern 3: Tab/comma separated "AAPL\t10\t150.00\t2025-01-15" or "AAPL,10,150,2025-01-15"
-  const separatorPattern = /^([A-Z]{1,5})[,\t]+(\d+\.?\d*)[,\t]*([\d.]*)?[,\t]*([\d\-\/]*)?/i;
+  // Pattern 3: Tab/comma separated "AAPL\t10\t150.00\t2025-01-15" or "AAPL,Buy,10,150,2025-01-15"
+  const separatorPattern = /^([A-Z]{1,5})[,\t]+(?:(buy|sell|bought|sold)[,\t]+)?(\d+\.?\d*)[,\t]*([\d.]*)?[,\t]*([\d\-\/]*)?/i;
+
+  // Pattern 4: Simple "AAPL 10" or "AAPL 10 shares"
+  const tickerQtyPattern = /^([A-Z]{1,5})[:\s]+(\d+\.?\d*)\s*(?:shares?)?\s*$/i;
 
   for (const line of lines) {
     let match: RegExpMatchArray | null;
 
-    // Try full pattern first
-    match = line.match(fullPattern);
+    // Try action-first pattern: "Buy 10 AAPL @ $150 on 2025-01-15" or "Bought AAPL 50 @ 175"
+    match = line.match(actionFirstPattern);
     if (match) {
       const type = parseTransactionType(match[1]);
-      const quantity = parseFloat(match[2]);
+      // quantity can be before or after symbol
+      const quantity = parseFloat(match[2] || match[4] || '0');
       const symbol = match[3].toUpperCase();
-      const price = match[4] ? parseFloat(match[4]) : 0;
-      const date = match[5] ? parseDate(match[5]) : '';
-      transactions.push({ symbol, type, quantity, price, date, fees: 0, total: price ? quantity * price : 0 });
-      continue;
+      const price = match[5] ? parseFloat(match[5]) : 0;
+      const date = match[6] ? parseDate(match[6]) : '';
+      if (quantity > 0) {
+        transactions.push({ symbol, type, quantity, price, date, fees: 0, total: price ? quantity * price : 0 });
+        continue;
+      }
     }
 
-    // Try separator pattern
+    // Try separator pattern: "AAPL,10,150,2025-01-15" or "AAPL\tBuy\t10\t150"
     match = line.match(separatorPattern);
     if (match) {
       const symbol = match[1].toUpperCase();
-      const quantity = parseFloat(match[2]);
-      const price = match[3] ? parseFloat(match[3]) : 0;
-      const date = match[4] ? parseDate(match[4]) : '';
+      const type = match[2] ? parseTransactionType(match[2]) : 'buy';
+      const quantity = parseFloat(match[3]);
+      const price = match[4] ? parseFloat(match[4]) : 0;
+      const date = match[5] ? parseDate(match[5]) : '';
       if (quantity > 0) {
-        transactions.push({ symbol, type: 'buy', quantity, price, date, fees: 0, total: price ? quantity * price : 0 });
+        transactions.push({ symbol, type, quantity, price, date, fees: 0, total: price ? quantity * price : 0 });
+        continue;
       }
-      continue;
     }
 
-    // Try simple ticker + quantity
+    // Try symbol-first pattern: "AAPL Buy 100 shares at $150 on 2025-01-15" / "AAPL 100 @ 150"
+    match = line.match(symbolFirstPattern);
+    if (match) {
+      const symbol = match[1].toUpperCase();
+      const type = match[2] ? parseTransactionType(match[2]) : 'buy';
+      const quantity = parseFloat(match[3] || '0');
+      const price = match[4] ? parseFloat(match[4]) : 0;
+      const date = match[5] ? parseDate(match[5]) : '';
+      if (quantity > 0) {
+        transactions.push({ symbol, type, quantity, price, date, fees: 0, total: price ? quantity * price : 0 });
+        continue;
+      }
+    }
+
+    // Try simple ticker + quantity: "AAPL 10"
     match = line.match(tickerQtyPattern);
     if (match) {
       const symbol = match[1].toUpperCase();
       const quantity = parseFloat(match[2]);
       if (quantity > 0) {
         transactions.push({ symbol, type: 'buy', quantity, price: 0, date: '', fees: 0, total: 0 });
+        continue;
       }
-      continue;
     }
   }
 
   if (transactions.length === 0) {
-    throw new Error('No transactions found. Try formats like "AAPL 10" or "Buy 10 AAPL @ 150" or comma/tab-separated values.');
+    throw new Error('No transactions found. Try formats like:\n• AAPL 10\n• Buy 10 AAPL @ 150\n• AAPL Buy 100 shares at $150 on 2024-01-15\n• AAPL,10,150,2024-01-15');
   }
 
   return { transactions };

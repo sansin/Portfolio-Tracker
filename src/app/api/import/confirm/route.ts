@@ -118,7 +118,15 @@ export async function POST(request: NextRequest) {
 
         if (assetError) throw assetError;
 
-        // Insert transaction
+        // Insert transaction — safely handle missing/empty dates
+        let transactionDate: string;
+        if (txn.date && txn.date.trim()) {
+          const d = new Date(txn.date);
+          transactionDate = isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+        } else {
+          transactionDate = new Date().toISOString();
+        }
+
         const { error: txnError } = await supabase.from('transactions').insert({
           portfolio_id: portfolioId,
           asset_id: asset.id,
@@ -127,7 +135,7 @@ export async function POST(request: NextRequest) {
           price_per_unit: txn.price,
           total_amount: txn.total,
           fees: txn.fees || 0,
-          transaction_date: new Date(txn.date).toISOString(),
+          transaction_date: transactionDate,
           broker_source: broker || 'manual',
           import_batch_id: batch.id,
         });

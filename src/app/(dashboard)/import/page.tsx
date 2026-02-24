@@ -301,7 +301,7 @@ export default function ImportPage() {
             <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
-              placeholder="Paste your transaction data here...&#10;&#10;Example:&#10;AAPL Buy 100 shares at $150.00 on 2024-01-15"
+              placeholder="Paste your transaction data here...&#10;&#10;Supported formats:&#10;AAPL 10&#10;Buy 10 AAPL @ $150.00 on 2024-01-15&#10;AAPL Buy 100 shares at $150&#10;AAPL,10,150,2024-01-15"
               className="w-full h-40 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
             />
             <Button onClick={handlePasteImport} loading={parsing}>

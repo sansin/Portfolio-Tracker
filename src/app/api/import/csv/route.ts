@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
     }
 
     const csvText = await file.text();
-    const result = await parseCSV(csvText, broker);
+    let result;
+    try {
+      result = await parseCSV(csvText, broker);
+    } catch (parseErr: any) {
+      return NextResponse.json({ error: parseErr.message || 'Could not parse CSV file' }, { status: 400 });
+    }
 
     // Backfill missing prices and dates
     const defaultDate = new Date().toISOString().split('T')[0];
@@ -50,9 +55,14 @@ export async function POST(request: NextRequest) {
             if (priceCache.has(cacheKey)) {
               price = priceCache.get(cacheKey) ?? 0;
             } else {
-              const historicalPrice = await getHistoricalPrice(t.symbol.toUpperCase(), date);
-              priceCache.set(cacheKey, historicalPrice);
-              price = historicalPrice ?? 0;
+              try {
+                const historicalPrice = await getHistoricalPrice(t.symbol.toUpperCase(), date);
+                priceCache.set(cacheKey, historicalPrice);
+                price = historicalPrice ?? 0;
+              } catch {
+                priceCache.set(cacheKey, null);
+                price = 0;
+              }
             }
           }
 
@@ -79,6 +89,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ transactions });
   } catch (error: any) {
     console.error('[import/csv] error:', error);
-    return NextResponse.json({ error: 'Failed to parse CSV' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to parse CSV' }, { status: 500 });
   }
 }

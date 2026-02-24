@@ -66,7 +66,7 @@ export default function ImportPage() {
       setParsed(data.transactions || []);
       toast('success', `Parsed ${data.transactions?.length || 0} transactions`);
     } catch (err: any) {
-      toast('error', 'Failed to parse CSV', err.message);
+      toast('error', 'CSV Parse Error', err.message);
     }
     setParsing(false);
   }
@@ -87,7 +87,7 @@ export default function ImportPage() {
       setParsed(data.transactions || []);
       toast('success', `Extracted ${data.transactions?.length || 0} transactions`);
     } catch (err: any) {
-      toast('error', 'Failed to parse screenshot', err.message);
+      toast('error', 'Screenshot Parse Error', err.message);
     }
     setParsing(false);
   }
@@ -107,7 +107,7 @@ export default function ImportPage() {
       setParsed(data.transactions || []);
       toast('success', `Parsed ${data.transactions?.length || 0} transactions`);
     } catch (err: any) {
-      toast('error', 'Failed to parse text', err.message);
+      toast('error', 'Parse Error', err.message);
     }
     setParsing(false);
   }

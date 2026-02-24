@@ -31,7 +31,12 @@ export async function POST(request: NextRequest) {
     const bytes = await image.arrayBuffer();
     const base64 = Buffer.from(bytes).toString('base64');
 
-    const result = await parseScreenshot(base64, broker);
+    let result;
+    try {
+      result = await parseScreenshot(base64, broker);
+    } catch (parseErr: any) {
+      return NextResponse.json({ error: parseErr.message || 'Could not parse screenshot' }, { status: 400 });
+    }
 
     // Backfill missing fields: fetch historical closing price
     const defaultDate = new Date().toISOString().split('T')[0];
@@ -52,9 +57,14 @@ export async function POST(request: NextRequest) {
             if (priceCache.has(cacheKey)) {
               price = priceCache.get(cacheKey) ?? 0;
             } else {
-              const historicalPrice = await getHistoricalPrice(t.symbol.toUpperCase(), date);
-              priceCache.set(cacheKey, historicalPrice);
-              price = historicalPrice ?? 0;
+              try {
+                const historicalPrice = await getHistoricalPrice(t.symbol.toUpperCase(), date);
+                priceCache.set(cacheKey, historicalPrice);
+                price = historicalPrice ?? 0;
+              } catch {
+                priceCache.set(cacheKey, null);
+                price = 0;
+              }
             }
           }
 
@@ -81,6 +91,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ transactions });
   } catch (error: any) {
     console.error('[import/screenshot] error:', error);
-    return NextResponse.json({ error: 'Failed to parse screenshot' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to parse screenshot' }, { status: 500 });
   }
 }

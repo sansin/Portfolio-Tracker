@@ -66,8 +66,9 @@ export async function POST(request: NextRequest) {
             date,
             fees,
             total,
-            valid: !!(t.symbol && t.quantity > 0 && price > 0),
-            error: !t.symbol ? 'Missing symbol' : t.quantity <= 0 ? 'Invalid quantity' : price <= 0 ? 'Could not fetch price' : undefined,
+            valid: !!(t.symbol && t.quantity > 0),
+            needsAttention: !price || !date,
+            error: !t.symbol ? 'Missing symbol' : t.quantity <= 0 ? 'Invalid quantity' : !price ? 'Price missing — please fill in' : undefined,
           };
         })
       );

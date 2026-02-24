@@ -55,8 +55,12 @@ export async function POST(request: NextRequest) {
       if (!t.symbol || typeof t.symbol !== 'string') return false;
       if (!t.quantity || t.quantity <= 0) return false;
       if (!t.price || t.price <= 0) return false;
-      if (t.date && new Date(t.date) > new Date()) return false;
-      return t.valid;
+      // Reject future dates; allow missing dates (will default to today)
+      if (t.date && t.date.trim()) {
+        const d = new Date(t.date);
+        if (!isNaN(d.getTime()) && d > new Date()) return false;
+      }
+      return true;
     });
 
     if (validTxns.length === 0) {

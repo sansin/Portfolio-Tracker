@@ -225,9 +225,49 @@ IMPORTANT: If only ticker and quantity are visible, still include them — set p
   return result.object;
 }
 
-// ─── Rules-based text parser ───────────────────────────────────────────────
+// ─── AI-powered text parser with regex fallback ────────────────────────────
 
 export async function parsePastedText(text: string, _broker: string): Promise<ParsedTransactions> {
+  // Try AI parsing first (handles any natural language format)
+  try {
+    const { object } = await aiGenerateObject<ParsedTransactions>(
+      text,
+      TransactionSchema,
+      `You are a financial transaction parser. Extract stock/ETF/crypto transactions from the user's text.
+
+RULES:
+- Extract the ticker SYMBOL (1-5 uppercase letters like AAPL, VRT, MSFT)
+- Extract transaction TYPE: buy, sell, dividend, transfer_in, transfer_out. Default to "buy" if not specified.
+- Extract QUANTITY (number of shares/units). Must be a positive number.
+- Extract PRICE per share. Use 0 if not mentioned.
+- Extract DATE in YYYY-MM-DD format. Use "" if not mentioned.
+- Extract FEES. Use 0 if not mentioned.
+- Extract TOTAL amount. Compute as quantity * price + fees if not mentioned, or use 0 if price is unknown.
+
+The user may write in ANY format: natural language sentences, shorthand, comma-separated, tab-separated, etc. Extract whatever you can from each line or logical entry. NEVER skip an entry — even if only the symbol and quantity are present, include it with zeros for missing fields.
+
+Examples of valid inputs:
+- "VRT buy 2700 shares at $162.71 on 2025-01-01"
+- "Buy 10 AAPL @ 150"
+- "MSFT 50 shares"
+- "Bought 100 TSLA at $200 on Jan 15 2025"
+- "AAPL 10, MSFT 20, GOOG 5"
+- "I purchased 500 shares of NVDA at $450 each on March 3rd 2025"`
+    );
+    if (object.transactions.length > 0) {
+      return object;
+    }
+  } catch (aiErr) {
+    console.warn('[parsePastedText] AI parsing failed, falling back to regex:', aiErr);
+  }
+
+  // Fallback: regex-based parsing
+  return regexParsePastedText(text);
+}
+
+// ─── Regex fallback parser ─────────────────────────────────────────────────
+
+function regexParsePastedText(text: string): ParsedTransactions {
   const lines = text
     .split('\n')
     .map((l) => l.trim())

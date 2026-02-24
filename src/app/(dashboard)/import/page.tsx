@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Upload, FileText, Image, ClipboardPaste, CheckCircle2, AlertCircle, Loader2, ArrowRight, X } from 'lucide-react';
+import { Upload, FileText, Image, ClipboardPaste, CheckCircle2, AlertCircle, Loader2, ArrowRight, X, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -22,6 +22,7 @@ interface ParsedTransaction {
   fees: number;
   total: number;
   valid: boolean;
+  needsAttention?: boolean;
   error?: string;
 }
 
@@ -114,7 +115,15 @@ export default function ImportPage() {
 
   async function handleConfirmImport() {
     if (!portfolioId || parsed.length === 0) return;
-    const validTxs = parsed.filter((t) => t.valid);
+    const validTxs = parsed.filter((t) => t.valid && t.symbol && t.quantity > 0);
+    
+    // Check if any have missing price — warn user
+    const missingPrice = validTxs.filter((t) => !t.price || t.price <= 0);
+    if (missingPrice.length > 0) {
+      toast('error', 'Missing prices', `${missingPrice.length} transaction(s) need a price. Please fill in the highlighted fields.`);
+      return;
+    }
+
     if (validTxs.length === 0) {
       toast('error', 'No valid transactions to import');
       return;
@@ -146,6 +155,28 @@ export default function ImportPage() {
     setParsed((prev) => prev.filter((t) => t.valid));
   }
 
+  function handleUpdateTransaction(id: string, field: keyof ParsedTransaction, value: string) {
+    setParsed((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const updated = { ...t };
+        if (field === 'symbol') updated.symbol = value.toUpperCase();
+        else if (field === 'type') updated.type = value;
+        else if (field === 'quantity') updated.quantity = parseFloat(value) || 0;
+        else if (field === 'price') updated.price = parseFloat(value) || 0;
+        else if (field === 'date') updated.date = value;
+        else if (field === 'fees') updated.fees = parseFloat(value) || 0;
+
+        // Recompute total and validity
+        updated.total = updated.price * updated.quantity + updated.fees;
+        updated.valid = !!(updated.symbol && updated.quantity > 0);
+        updated.needsAttention = !updated.price || !updated.date;
+        updated.error = !updated.symbol ? 'Missing symbol' : updated.quantity <= 0 ? 'Invalid quantity' : !updated.price ? 'Price missing' : undefined;
+        return updated;
+      })
+    );
+  }
+
   function handleResetImport() {
     setImportResult(null);
     setParsed([]);
@@ -154,6 +185,8 @@ export default function ImportPage() {
   }
 
   const validCount = parsed.filter((t) => t.valid).length;
+  const readyCount = parsed.filter((t) => t.valid && t.price > 0).length;
+  const needsAttentionCount = parsed.filter((t) => t.valid && (!t.price || t.needsAttention)).length;
   const invalidCount = parsed.filter((t) => !t.valid).length;
 
   return (
@@ -301,7 +334,7 @@ export default function ImportPage() {
             <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
-              placeholder="Paste your transaction data here...&#10;&#10;Supported formats:&#10;AAPL 10&#10;Buy 10 AAPL @ $150.00 on 2024-01-15&#10;AAPL Buy 100 shares at $150&#10;AAPL,10,150,2024-01-15"
+              placeholder="Paste your transaction data here — any format works!&#10;&#10;Examples:&#10;VRT buy 2700 shares at $162.71 on 2025-01-01&#10;Bought 100 AAPL at $150&#10;MSFT 50 shares&#10;TSLA,10,200,2025-03-15"
               className="w-full h-40 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
             />
             <Button onClick={handlePasteImport} loading={parsing}>
@@ -312,26 +345,29 @@ export default function ImportPage() {
         </Card>
       )}
 
-      {/* Step 4: Review parsed transactions */}
+      {/* Step 4: Review parsed transactions (editable) */}
       {parsed.length > 0 && !importResult && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <CardTitle className="text-base">Review Transactions</CardTitle>
+                <CardTitle className="text-base">Review & Edit Transactions</CardTitle>
                 <CardDescription>
-                  {validCount} valid, {invalidCount} with issues — review before importing.
+                  {readyCount} ready to import
+                  {needsAttentionCount > 0 && <span className="text-amber-400">, {needsAttentionCount} need attention</span>}
+                  {invalidCount > 0 && <span className="text-red-400">, {invalidCount} invalid</span>}
+                  {' — '}click any cell to edit.
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {invalidCount > 0 && (
                   <Button variant="ghost" onClick={handleRemoveInvalid}>
                     Remove Invalid ({invalidCount})
                   </Button>
                 )}
                 <Button variant="ghost" onClick={() => setParsed([])}>Cancel</Button>
-                <Button onClick={handleConfirmImport} loading={importing} disabled={validCount === 0}>
-                  Import {validCount} Transactions
+                <Button onClick={handleConfirmImport} loading={importing} disabled={readyCount === 0}>
+                  Import {readyCount} Transaction{readyCount !== 1 ? 's' : ''}
                 </Button>
               </div>
             </div>
@@ -341,43 +377,126 @@ export default function ImportPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-zinc-800">
-                    <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Status</th>
-                    <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Symbol</th>
-                    <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Type</th>
-                    <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Qty</th>
-                    <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Price</th>
-                    <th className="text-left text-xs font-medium text-zinc-500 px-6 py-3">Date</th>
-                    <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Total</th>
-                    <th className="text-right text-xs font-medium text-zinc-500 px-6 py-3">Action</th>
+                    <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3 w-10">Status</th>
+                    <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">Symbol</th>
+                    <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">Type</th>
+                    <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">Qty</th>
+                    <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">Price</th>
+                    <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">Date</th>
+                    <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">Fees</th>
+                    <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">Total</th>
+                    <th className="w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {parsed.map((t) => (
-                    <tr key={t.id} className={cn('border-b border-zinc-800/50', !t.valid && 'opacity-50')}>
-                      <td className="px-6 py-3">
-                        {t.valid ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertCircle className="h-4 w-4 text-red-400" />}
-                      </td>
-                      <td className="px-6 py-3 text-sm font-medium text-zinc-100">{t.symbol}</td>
-                      <td className="px-6 py-3"><Badge variant={t.type === 'buy' ? 'success' : 'danger'}>{t.type}</Badge></td>
-                      <td className="text-right px-6 py-3 text-sm text-zinc-300 tabular-nums">{t.quantity}</td>
-                      <td className="text-right px-6 py-3 text-sm text-zinc-300 tabular-nums">{formatCurrency(t.price)}</td>
-                      <td className="px-6 py-3 text-sm text-zinc-400">{t.date}</td>
-                      <td className="text-right px-6 py-3 text-sm font-medium text-zinc-100 tabular-nums">{formatCurrency(t.total)}</td>
-                      <td className="text-right px-6 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTransaction(t.id)}
-                          className="inline-flex items-center justify-center rounded-md p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                          title="Remove transaction"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {parsed.map((t) => {
+                    const isReady = t.valid && t.price > 0;
+                    const needsWork = t.valid && (!t.price || t.needsAttention);
+                    return (
+                      <tr key={t.id} className={cn('border-b border-zinc-800/50 group', !t.valid && 'opacity-50 bg-red-500/5', needsWork && 'bg-amber-500/5')}>
+                        <td className="px-4 py-2">
+                          {isReady ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                          ) : needsWork ? (
+                            <Pencil className="h-4 w-4 text-amber-400" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-red-400" />
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={t.symbol}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'symbol', e.target.value)}
+                            className="w-20 bg-transparent text-sm font-medium text-zinc-100 border-b border-transparent hover:border-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors uppercase tabular-nums"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <select
+                            value={t.type}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'type', e.target.value)}
+                            className="bg-transparent text-sm text-zinc-300 border-b border-transparent hover:border-zinc-600 focus:border-indigo-500 focus:outline-none cursor-pointer transition-colors"
+                          >
+                            <option value="buy" className="bg-zinc-800">Buy</option>
+                            <option value="sell" className="bg-zinc-800">Sell</option>
+                            <option value="dividend" className="bg-zinc-800">Dividend</option>
+                            <option value="transfer_in" className="bg-zinc-800">Transfer In</option>
+                            <option value="transfer_out" className="bg-zinc-800">Transfer Out</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            value={t.quantity || ''}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'quantity', e.target.value)}
+                            className="w-20 bg-transparent text-sm text-zinc-300 text-right border-b border-transparent hover:border-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors tabular-nums"
+                            min="0"
+                            step="any"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            value={t.price || ''}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'price', e.target.value)}
+                            placeholder="0.00"
+                            className={cn(
+                              'w-24 bg-transparent text-sm text-right border-b focus:outline-none transition-colors tabular-nums',
+                              !t.price ? 'border-amber-500/50 text-amber-300 placeholder:text-amber-500/50' : 'border-transparent text-zinc-300 hover:border-zinc-600 focus:border-indigo-500'
+                            )}
+                            min="0"
+                            step="any"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="date"
+                            value={t.date || ''}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'date', e.target.value)}
+                            className={cn(
+                              'bg-transparent text-sm border-b focus:outline-none transition-colors',
+                              !t.date ? 'border-amber-500/30 text-amber-300' : 'border-transparent text-zinc-400 hover:border-zinc-600 focus:border-indigo-500'
+                            )}
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            value={t.fees || ''}
+                            onChange={(e) => handleUpdateTransaction(t.id, 'fees', e.target.value)}
+                            placeholder="0"
+                            className="w-16 bg-transparent text-sm text-zinc-400 text-right border-b border-transparent hover:border-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors tabular-nums"
+                            min="0"
+                            step="any"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right text-sm font-medium text-zinc-100 tabular-nums">
+                          {t.total > 0 ? formatCurrency(t.total) : '—'}
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTransaction(t.id)}
+                            className="inline-flex items-center justify-center rounded-md p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Remove transaction"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            {needsAttentionCount > 0 && (
+              <div className="px-6 py-3 bg-amber-500/5 border-t border-amber-500/20">
+                <p className="text-xs text-amber-400">
+                  <Pencil className="h-3 w-3 inline mr-1" />
+                  {needsAttentionCount} transaction{needsAttentionCount !== 1 ? 's' : ''} highlighted in amber — fill in the missing price or date to import.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

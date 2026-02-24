@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCompanyProfile } from '@/lib/services/stock-data';
+import { isCashTransaction, isOptionTransaction, optionAssetSymbol, formatOptionSymbol } from '@/types';
+import { isKnownCryptoSymbol } from '@/lib/services/crypto-data';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
     .from('transactions')
     .select(`
       *,
-      asset:assets!asset_id (id, symbol, name, asset_type, logo_url),
+      asset:assets!asset_id (id, symbol, name, asset_type, logo_url, sector),
       portfolio:portfolios!portfolio_id (id, name, color)
     `, { count: 'exact' })
     .in('portfolio_id', portfolioIds)
@@ -75,18 +77,29 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
 
   // Input validation
-  const validTypes = ['buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out'];
-  if (!body.symbol || typeof body.symbol !== 'string' || body.symbol.trim().length === 0 || body.symbol.length > 10) {
-    return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
-  }
-  if (typeof body.quantity !== 'number' || body.quantity <= 0 || !isFinite(body.quantity)) {
-    return NextResponse.json({ error: 'Quantity must be a positive number' }, { status: 400 });
-  }
-  if (typeof body.price_per_unit !== 'number' || body.price_per_unit <= 0 || !isFinite(body.price_per_unit)) {
-    return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
-  }
+  const validTypes = ['buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out', 'deposit', 'withdrawal', 'margin_interest', 'option_exercise', 'option_assignment', 'option_expiration'];
   if (!validTypes.includes(body.transaction_type)) {
     return NextResponse.json({ error: 'Invalid transaction type' }, { status: 400 });
+  }
+
+  const isCash = isCashTransaction(body.transaction_type);
+  const isOption = body.asset_type === 'option' || body.option_type;
+
+  // Cash transactions (deposit/withdrawal/margin_interest) only require amount
+  if (isCash) {
+    if (typeof body.total_amount !== 'number' || body.total_amount === 0 || !isFinite(body.total_amount)) {
+      return NextResponse.json({ error: 'Amount must be a non-zero number' }, { status: 400 });
+    }
+  } else {
+    if (!body.symbol || typeof body.symbol !== 'string' || body.symbol.trim().length === 0 || body.symbol.length > 10) {
+      return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
+    }
+    if (typeof body.quantity !== 'number' || body.quantity <= 0 || !isFinite(body.quantity)) {
+      return NextResponse.json({ error: 'Quantity must be a positive number' }, { status: 400 });
+    }
+    if (typeof body.price_per_unit !== 'number' || body.price_per_unit <= 0 || !isFinite(body.price_per_unit)) {
+      return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+    }
   }
   if (body.fees !== undefined && body.fees !== null && (typeof body.fees !== 'number' || body.fees < 0)) {
     return NextResponse.json({ error: 'Fees must be non-negative' }, { status: 400 });
@@ -107,21 +120,50 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
   }
 
-  // Upsert asset (with sector from Finnhub)
-  const symbolUpper = body.symbol.toUpperCase();
+  // Upsert asset — for cash transactions use a synthetic $CASH symbol
+  // For options, create a unique symbol encoding the contract details
+  let symbolUpper: string;
+  let assetName: string;
+  let assetType: string;
+
+  if (isCash) {
+    symbolUpper = '$CASH';
+    assetName = 'Cash';
+    assetType = 'other';
+  } else if (isOption) {
+    // Validate option-specific fields
+    if (!body.underlying_symbol || !body.option_type || !body.strike_price || !body.expiration_date) {
+      return NextResponse.json({ error: 'Options require underlying_symbol, option_type, strike_price, expiration_date' }, { status: 400 });
+    }
+    const underlying = body.underlying_symbol.toUpperCase();
+    symbolUpper = optionAssetSymbol(underlying, body.option_type, body.strike_price, body.expiration_date);
+    assetName = formatOptionSymbol(underlying, body.option_type, body.strike_price, body.expiration_date);
+    assetType = 'option';
+  } else {
+    symbolUpper = body.symbol.toUpperCase();
+    assetName = body.asset_name || symbolUpper;
+    const isCrypto = isKnownCryptoSymbol(symbolUpper);
+    assetType = isCrypto ? 'crypto' : (body.asset_type || 'stock');
+  }
+
+  const isCrypto = !isCash && !isOption && isKnownCryptoSymbol(symbolUpper);
   let sector: string | null = null;
-  try {
-    const profile = await getCompanyProfile(symbolUpper);
-    if (profile) sector = profile.sector;
-  } catch { /* non-critical */ }
+  if (!isCash && !isCrypto && !isOption) {
+    try {
+      const profile = await getCompanyProfile(symbolUpper);
+      if (profile) sector = profile.sector;
+    } catch { /* non-critical */ }
+  }
+  if (isCrypto) sector = 'Cryptocurrency';
+  if (isOption) sector = 'Options';
 
   const { data: asset, error: assetError } = await supabase
     .from('assets')
     .upsert(
       {
         symbol: symbolUpper,
-        name: body.asset_name || symbolUpper,
-        asset_type: body.asset_type || 'stock',
+        name: assetName,
+        asset_type: assetType,
         ...(sector ? { sector } : {}),
       },
       { onConflict: 'symbol' }
@@ -133,7 +175,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create asset' }, { status: 500 });
   }
 
-  const totalAmount = body.quantity * body.price_per_unit + (body.fees || 0);
+  // Upsert options contract metadata if this is an option
+  if (isOption) {
+    const { error: contractError } = await supabase
+      .from('options_contracts')
+      .upsert(
+        {
+          asset_id: asset.id,
+          underlying_symbol: body.underlying_symbol.toUpperCase(),
+          option_type: body.option_type,
+          strike_price: body.strike_price,
+          expiration_date: body.expiration_date,
+          contract_multiplier: body.contract_multiplier || 100,
+        },
+        { onConflict: 'asset_id' }
+      );
+
+    if (contractError) {
+      console.error('[transactions] Options contract upsert error:', contractError);
+    }
+  }
+
+  // For cash transactions: quantity=1, price_per_unit=amount, total_amount=amount
+  // Withdrawals & margin_interest are stored as negative total_amount
+  const cashAmount = isCash ? body.total_amount : undefined;
+  const quantity = isCash ? 1 : body.quantity;
+  const pricePerUnit = isCash ? Math.abs(cashAmount!) : body.price_per_unit;
+  const totalAmount = isCash
+    ? cashAmount!
+    : body.quantity * body.price_per_unit + (body.fees || 0);
 
   const { data, error } = await supabase
     .from('transactions')
@@ -141,8 +211,8 @@ export async function POST(request: NextRequest) {
       portfolio_id: body.portfolio_id,
       asset_id: asset.id,
       transaction_type: body.transaction_type,
-      quantity: body.quantity,
-      price_per_unit: body.price_per_unit,
+      quantity,
+      price_per_unit: pricePerUnit,
       total_amount: totalAmount,
       fees: body.fees || 0,
       transaction_date: body.transaction_date,
@@ -180,15 +250,20 @@ export async function PUT(request: NextRequest) {
   }
 
   // Input validation
-  const validTypes = ['buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out'];
+  const validTypes = ['buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out', 'deposit', 'withdrawal', 'margin_interest', 'option_exercise', 'option_assignment', 'option_expiration'];
   if (transaction_type && !validTypes.includes(transaction_type)) {
     return NextResponse.json({ error: 'Invalid transaction type' }, { status: 400 });
   }
-  if (quantity !== undefined && (typeof quantity !== 'number' || quantity <= 0 || !isFinite(quantity))) {
-    return NextResponse.json({ error: 'Quantity must be a positive number' }, { status: 400 });
-  }
-  if (price_per_unit !== undefined && (typeof price_per_unit !== 'number' || price_per_unit <= 0 || !isFinite(price_per_unit))) {
-    return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+
+  const isCash = transaction_type ? isCashTransaction(transaction_type) : false;
+
+  if (!isCash) {
+    if (quantity !== undefined && (typeof quantity !== 'number' || quantity <= 0 || !isFinite(quantity))) {
+      return NextResponse.json({ error: 'Quantity must be a positive number' }, { status: 400 });
+    }
+    if (price_per_unit !== undefined && (typeof price_per_unit !== 'number' || price_per_unit <= 0 || !isFinite(price_per_unit))) {
+      return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+    }
   }
   if (fees !== undefined && fees !== null && (typeof fees !== 'number' || fees < 0)) {
     return NextResponse.json({ error: 'Fees must be non-negative' }, { status: 400 });

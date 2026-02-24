@@ -22,9 +22,95 @@ export const TransactionType = {
   SPLIT: 'split',
   TRANSFER_IN: 'transfer_in',
   TRANSFER_OUT: 'transfer_out',
+  DEPOSIT: 'deposit',
+  WITHDRAWAL: 'withdrawal',
+  MARGIN_INTEREST: 'margin_interest',
+  OPTION_EXERCISE: 'option_exercise',
+  OPTION_ASSIGNMENT: 'option_assignment',
+  OPTION_EXPIRATION: 'option_expiration',
 } as const;
 export type TransactionType =
   (typeof TransactionType)[keyof typeof TransactionType];
+
+export const OptionType = {
+  CALL: 'call',
+  PUT: 'put',
+} as const;
+export type OptionType = (typeof OptionType)[keyof typeof OptionType];
+
+/** Transaction types that represent cash movements (no underlying asset). */
+export const CASH_TRANSACTION_TYPES: TransactionType[] = [
+  'deposit',
+  'withdrawal',
+  'margin_interest',
+];
+
+export function isCashTransaction(type: string): boolean {
+  return (CASH_TRANSACTION_TYPES as string[]).includes(type);
+}
+
+/** Transaction types specific to options lifecycle events. */
+export const OPTION_TRANSACTION_TYPES: TransactionType[] = [
+  'option_exercise',
+  'option_assignment',
+  'option_expiration',
+];
+
+export function isOptionTransaction(type: string): boolean {
+  return (OPTION_TRANSACTION_TYPES as string[]).includes(type);
+}
+
+/**
+ * Format an option symbol from its components.
+ * Output: "AAPL 250C 03/21/26"
+ */
+export function formatOptionSymbol(
+  underlying: string,
+  optionType: OptionType,
+  strike: number,
+  expiration: string, // ISO date string
+): string {
+  const d = new Date(expiration + 'T00:00:00');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const typeChar = optionType === 'call' ? 'C' : 'P';
+  return `${underlying} ${strike}${typeChar} ${mm}/${dd}/${yy}`;
+}
+
+/**
+ * Generate a unique asset symbol key for an option contract.
+ * Used as the `symbol` field in the assets table.
+ * Output: "AAPL_C_250_20260321"
+ */
+export function optionAssetSymbol(
+  underlying: string,
+  optionType: OptionType,
+  strike: number,
+  expiration: string, // ISO date
+): string {
+  const typeChar = optionType === 'call' ? 'C' : 'P';
+  const dateStr = expiration.replace(/-/g, '');
+  return `${underlying}_${typeChar}_${strike}_${dateStr}`;
+}
+
+/** Parse an option asset symbol back into components. Returns null if not an option symbol. */
+export function parseOptionAssetSymbol(symbol: string): {
+  underlying: string;
+  optionType: OptionType;
+  strike: number;
+  expiration: string;
+} | null {
+  const m = symbol.match(/^([A-Z]+)_(C|P)_(\d+\.?\d*)_(\d{8})$/);
+  if (!m) return null;
+  const [, underlying, typeChar, strikeStr, dateStr] = m;
+  return {
+    underlying,
+    optionType: typeChar === 'C' ? 'call' : 'put',
+    strike: parseFloat(strikeStr),
+    expiration: `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
+  };
+}
 
 export const BrokerSource = {
   MANUAL: 'manual',
@@ -301,6 +387,34 @@ export type AIInsightUpdate = Updatable<
   Omit<AIInsightRow, 'id' | 'created_at'>
 >;
 
+// 7b. options_contracts -------------------------------------------------------
+
+export interface OptionsContractRow {
+  id: string;
+  asset_id: string;
+  underlying_symbol: string;
+  option_type: OptionType;
+  strike_price: number;
+  expiration_date: string; // DATE as ISO string
+  contract_multiplier: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OptionsContractInsert {
+  id?: string;
+  asset_id: string;
+  underlying_symbol: string;
+  option_type: OptionType;
+  strike_price: number;
+  expiration_date: string;
+  contract_multiplier?: number;
+}
+
+export type OptionsContractUpdate = Updatable<
+  Omit<OptionsContractRow, 'id' | 'asset_id' | 'created_at' | 'updated_at'>
+>;
+
 // 9. watchlist ----------------------------------------------------------------
 
 export interface WatchlistRow {
@@ -365,6 +479,11 @@ export interface Database {
         Insert: AIInsightInsert;
         Update: AIInsightUpdate;
       };
+      options_contracts: {
+        Row: OptionsContractRow;
+        Insert: OptionsContractInsert;
+        Update: OptionsContractUpdate;
+      };
       watchlist: {
         Row: WatchlistRow;
         Insert: WatchlistInsert;
@@ -374,6 +493,7 @@ export interface Database {
     Enums: {
       asset_type: AssetType;
       transaction_type: TransactionType;
+      option_type: OptionType;
       broker_source: BrokerSource;
       import_status: ImportStatus;
       insight_type: InsightType;

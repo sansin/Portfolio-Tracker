@@ -15,6 +15,7 @@ import { useTransactionStore } from '@/stores/transaction-store';
 import { usePortfolioStore } from '@/stores/portfolio-store';
 import { formatCurrency, formatDate, cn, formatQuantity } from '@/lib/utils';
 import { useStockDetail } from '@/contexts/stock-detail-context';
+import { isCashTransaction, isOptionTransaction, optionAssetSymbol, formatOptionSymbol, parseOptionAssetSymbol } from '@/types';
 
 export default function TransactionsPage() {
   const { openStockDetail } = useStockDetail();
@@ -25,6 +26,7 @@ export default function TransactionsPage() {
 
   // Add Transaction modal state
   const [showAddTx, setShowAddTx] = React.useState(false);
+  const [assetClass, setAssetClass] = React.useState<'stock' | 'option' | 'cash'>('stock');
   const [addForm, setAddForm] = React.useState({
     portfolio_id: '',
     symbol: '',
@@ -34,6 +36,11 @@ export default function TransactionsPage() {
     fees: '',
     transaction_date: new Date().toISOString().split('T')[0],
     notes: '',
+    // Option fields
+    underlying_symbol: '',
+    option_type: 'call' as 'call' | 'put',
+    strike_price: '',
+    expiration_date: '',
   });
   const [addingSaving, setAddingSaving] = React.useState(false);
 
@@ -114,23 +121,51 @@ export default function TransactionsPage() {
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!addForm.portfolio_id || !addForm.symbol.trim()) return;
+    if (!addForm.portfolio_id) return;
+    const isCash = isCashTransaction(addForm.transaction_type);
+    const isOpt = assetClass === 'option';
+    if (!isCash && !isOpt && !addForm.symbol.trim()) return;
+    if (isOpt && (!addForm.underlying_symbol.trim() || !addForm.strike_price || !addForm.expiration_date)) return;
     setAddingSaving(true);
 
-    const success = await addTransaction({
+    const amount = parseFloat(addForm.price_per_unit);
+
+    // Build the payload
+    const payload: any = {
       portfolio_id: addForm.portfolio_id,
-      symbol: addForm.symbol.toUpperCase(),
       transaction_type: addForm.transaction_type,
-      quantity: parseFloat(addForm.quantity),
-      price_per_unit: parseFloat(addForm.price_per_unit),
+      quantity: isCash ? 1 : parseFloat(addForm.quantity),
+      price_per_unit: isCash ? Math.abs(amount) : amount,
       fees: addForm.fees ? parseFloat(addForm.fees) : undefined,
       transaction_date: addForm.transaction_date,
       notes: addForm.notes || undefined,
-    });
+    };
+
+    if (isCash) {
+      payload.symbol = '$CASH';
+      payload.total_amount = addForm.transaction_type === 'deposit' ? Math.abs(amount) : -Math.abs(amount);
+    } else if (isOpt) {
+      payload.symbol = optionAssetSymbol(
+        addForm.underlying_symbol.toUpperCase(),
+        addForm.option_type,
+        parseFloat(addForm.strike_price),
+        addForm.expiration_date,
+      );
+      payload.asset_type = 'option';
+      payload.underlying_symbol = addForm.underlying_symbol.toUpperCase();
+      payload.option_type = addForm.option_type;
+      payload.strike_price = parseFloat(addForm.strike_price);
+      payload.expiration_date = addForm.expiration_date;
+    } else {
+      payload.symbol = addForm.symbol.toUpperCase();
+    }
+
+    const success = await addTransaction(payload);
 
     if (success) {
       toast('success', 'Transaction added');
       setShowAddTx(false);
+      setAssetClass('stock');
       setAddForm({
         portfolio_id: '',
         symbol: '',
@@ -140,6 +175,10 @@ export default function TransactionsPage() {
         fees: '',
         transaction_date: new Date().toISOString().split('T')[0],
         notes: '',
+        underlying_symbol: '',
+        option_type: 'call',
+        strike_price: '',
+        expiration_date: '',
       });
       fetchTransactions();
     } else {
@@ -227,6 +266,12 @@ export default function TransactionsPage() {
                   { value: 'dividend', label: 'Dividend' },
                   { value: 'transfer_in', label: 'Transfer In' },
                   { value: 'transfer_out', label: 'Transfer Out' },
+                  { value: 'deposit', label: 'Deposit' },
+                  { value: 'withdrawal', label: 'Withdrawal' },
+                  { value: 'margin_interest', label: 'Margin Interest' },
+                  { value: 'option_exercise', label: 'Option Exercise' },
+                  { value: 'option_assignment', label: 'Option Assignment' },
+                  { value: 'option_expiration', label: 'Option Expiration' },
                 ]}
               />
               <Input
@@ -282,15 +327,23 @@ export default function TransactionsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant={t.transaction_type === 'buy' || t.transaction_type === 'transfer_in' ? 'success' : t.transaction_type === 'sell' || t.transaction_type === 'transfer_out' ? 'danger' : 'info'}>
+                          <Badge variant={
+                            t.transaction_type === 'buy' || t.transaction_type === 'transfer_in' || t.transaction_type === 'deposit' ? 'success'
+                            : t.transaction_type === 'sell' || t.transaction_type === 'transfer_out' || t.transaction_type === 'withdrawal' || t.transaction_type === 'margin_interest' ? 'danger'
+                            : t.transaction_type.startsWith('option_') ? 'warning'
+                            : 'info'
+                          }>
                             {t.transaction_type.replaceAll('_', ' ')}
                           </Badge>
                         </td>
                         <td className="px-6 py-4">
                           <button
-                            onClick={() => t.asset?.symbol && openStockDetail(t.asset.symbol)}
+                            onClick={() => t.asset?.symbol && openStockDetail(t.asset?.asset_type === 'option' ? (parseOptionAssetSymbol(t.asset.symbol)?.underlying || t.asset.symbol) : t.asset.symbol)}
                             className="text-sm font-medium text-zinc-100 hover:text-indigo-400 transition-colors cursor-pointer"
-                          >{t.asset?.symbol || 'N/A'}</button>
+                          >
+                            {t.asset?.asset_type === 'option' ? (t.asset.name || t.asset.symbol) : (t.asset?.symbol || 'N/A')}
+                          </button>
+                          {t.asset?.asset_type === 'option' && <Badge variant="warning" className="text-[10px] px-1.5 py-0 ml-1.5">Option</Badge>}
                         </td>
                         <td className="text-right px-6 py-4 text-sm text-zinc-300 tabular-nums">{formatQuantity(Number(t.quantity))}</td>
                         <td className="text-right px-6 py-4 text-sm text-zinc-300 tabular-nums">{formatCurrency(Number(t.price_per_unit))}</td>
@@ -364,12 +417,24 @@ export default function TransactionsPage() {
                   { value: 'dividend', label: 'Dividend' },
                   { value: 'transfer_in', label: 'Transfer In' },
                   { value: 'transfer_out', label: 'Transfer Out' },
+                  { value: 'deposit', label: 'Deposit' },
+                  { value: 'withdrawal', label: 'Withdrawal' },
+                  { value: 'margin_interest', label: 'Margin Interest' },
+                  { value: 'option_exercise', label: 'Option Exercise' },
+                  { value: 'option_assignment', label: 'Option Assignment' },
+                  { value: 'option_expiration', label: 'Option Expiration' },
                 ]}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
-              <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+              {isCashTransaction(editForm.transaction_type) ? (
+                <Input label="Amount (USD)" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+              ) : (
+                <>
+                  <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
+                  <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+                </>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" value={editForm.fees} onChange={(e) => setEditForm({ ...editForm, fees: e.target.value })} />
@@ -392,6 +457,37 @@ export default function TransactionsPage() {
         </ModalHeader>
         <form onSubmit={handleAddSubmit}>
           <div className="space-y-4">
+            {/* Asset class toggle */}
+            <div>
+              <label className="text-xs text-zinc-400 uppercase tracking-wider mb-1.5 block">Asset Class</label>
+              <div className="flex gap-2">
+                {(['stock', 'option', 'cash'] as const).map((cls) => (
+                  <button
+                    key={cls}
+                    type="button"
+                    onClick={() => {
+                      setAssetClass(cls);
+                      if (cls === 'cash') {
+                        setAddForm((f) => ({ ...f, transaction_type: 'deposit', symbol: '$CASH', quantity: '1' }));
+                      } else if (cls === 'option') {
+                        setAddForm((f) => ({ ...f, transaction_type: 'buy', symbol: '' }));
+                      } else {
+                        setAddForm((f) => ({ ...f, transaction_type: 'buy', symbol: f.symbol === '$CASH' ? '' : f.symbol }));
+                      }
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border',
+                      assetClass === cls
+                        ? cls === 'option' ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : cls === 'cash' ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' : 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+                        : 'text-zinc-400 border-zinc-700/50 hover:text-zinc-200 hover:bg-zinc-800'
+                    )}
+                  >
+                    {cls === 'stock' ? 'Stock / ETF / Crypto' : cls === 'option' ? 'Option' : 'Cash'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Portfolio"
@@ -403,24 +499,71 @@ export default function TransactionsPage() {
                 ]}
                 required
               />
-              <Input label="Symbol" placeholder="AAPL" value={addForm.symbol} onChange={(e) => setAddForm({ ...addForm, symbol: e.target.value })} onBlur={async () => {
-                const sym = addForm.symbol.trim().toUpperCase();
-                if (sym && !addForm.price_per_unit) {
-                  try {
-                    const res = await fetch(`/api/stocks/quote?symbols=${encodeURIComponent(sym)}`);
-                    const data = await res.json();
-                    const price = data.quotes?.[sym]?.price;
-                    if (price) setAddForm((prev) => ({ ...prev, price_per_unit: String(price) }));
-                  } catch { /* ignore */ }
-                }
-              }} required />
+              {assetClass === 'option' ? (
+                <Input label="Underlying Symbol" placeholder="AAPL" value={addForm.underlying_symbol} onChange={(e) => setAddForm({ ...addForm, underlying_symbol: e.target.value })} required />
+              ) : (
+                <Input label="Symbol" placeholder="AAPL" value={addForm.symbol} onChange={(e) => setAddForm({ ...addForm, symbol: e.target.value })} onBlur={async () => {
+                  const sym = addForm.symbol.trim().toUpperCase();
+                  if (sym && !addForm.price_per_unit) {
+                    try {
+                      const res = await fetch(`/api/stocks/quote?symbols=${encodeURIComponent(sym)}`);
+                      const data = await res.json();
+                      const price = data.quotes?.[sym]?.price;
+                      if (price) setAddForm((prev) => ({ ...prev, price_per_unit: String(price) }));
+                    } catch { /* ignore */ }
+                  }
+                }} required={assetClass !== 'cash'} disabled={assetClass === 'cash'} />
+              )}
             </div>
+
+            {/* Option contract details */}
+            {assetClass === 'option' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-purple-500/5 border border-purple-500/10 rounded-lg">
+                <Select
+                  label="Type"
+                  value={addForm.option_type}
+                  onChange={(e) => setAddForm({ ...addForm, option_type: e.target.value as 'call' | 'put' })}
+                  options={[
+                    { value: 'call', label: 'Call' },
+                    { value: 'put', label: 'Put' },
+                  ]}
+                />
+                <Input label="Strike" type="number" step="any" placeholder="250" value={addForm.strike_price} onChange={(e) => setAddForm({ ...addForm, strike_price: e.target.value })} required />
+                <Input label="Expiration" type="date" value={addForm.expiration_date} onChange={(e) => setAddForm({ ...addForm, expiration_date: e.target.value })} required />
+                <div className="flex items-end">
+                  <p className="text-xs text-zinc-500 pb-2">
+                    {addForm.underlying_symbol && addForm.strike_price && addForm.expiration_date
+                      ? formatOptionSymbol(addForm.underlying_symbol.toUpperCase(), addForm.option_type, parseFloat(addForm.strike_price), addForm.expiration_date)
+                      : 'Preview'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
-                label="Type"
+                label="Transaction"
                 value={addForm.transaction_type}
-                onChange={(e) => setAddForm({ ...addForm, transaction_type: e.target.value })}
-                options={[
+                onChange={(e) => {
+                  const newType = e.target.value;
+                  if (isCashTransaction(newType)) {
+                    setAssetClass('cash');
+                    setAddForm({ ...addForm, transaction_type: newType, symbol: '$CASH', quantity: '1' });
+                  } else {
+                    setAddForm({ ...addForm, transaction_type: newType, symbol: addForm.symbol === '$CASH' ? '' : addForm.symbol });
+                  }
+                }}
+                options={assetClass === 'option' ? [
+                  { value: 'buy', label: 'Buy to Open' },
+                  { value: 'sell', label: 'Sell to Close' },
+                  { value: 'option_exercise', label: 'Exercise' },
+                  { value: 'option_assignment', label: 'Assignment' },
+                  { value: 'option_expiration', label: 'Expiration' },
+                ] : assetClass === 'cash' ? [
+                  { value: 'deposit', label: 'Deposit' },
+                  { value: 'withdrawal', label: 'Withdrawal' },
+                  { value: 'margin_interest', label: 'Margin Interest' },
+                ] : [
                   { value: 'buy', label: 'Buy' },
                   { value: 'sell', label: 'Sell' },
                   { value: 'dividend', label: 'Dividend' },
@@ -428,12 +571,18 @@ export default function TransactionsPage() {
                   { value: 'transfer_out', label: 'Transfer Out' },
                 ]}
               />
-              <Input label="Quantity" type="number" step="any" value={addForm.quantity} onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })} required />
+              {assetClass === 'cash' ? (
+                <Input label="Amount (USD)" type="number" step="any" placeholder="1000.00" value={addForm.price_per_unit} onChange={(e) => setAddForm({ ...addForm, price_per_unit: e.target.value })} required />
+              ) : (
+                <Input label={assetClass === 'option' ? 'Contracts' : 'Quantity'} type="number" step="any" value={addForm.quantity} onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })} required />
+              )}
             </div>
+            {assetClass !== 'cash' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Price per unit" type="number" step="any" placeholder="auto-fills" value={addForm.price_per_unit} onChange={(e) => setAddForm({ ...addForm, price_per_unit: e.target.value })} required />
+              <Input label={assetClass === 'option' ? 'Premium per contract' : 'Price per unit'} type="number" step="any" placeholder="auto-fills" value={addForm.price_per_unit} onChange={(e) => setAddForm({ ...addForm, price_per_unit: e.target.value })} required />
               <Input label="Fees" type="number" step="any" value={addForm.fees} onChange={(e) => setAddForm({ ...addForm, fees: e.target.value })} />
             </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Date" type="date" value={addForm.transaction_date} onChange={(e) => setAddForm({ ...addForm, transaction_date: e.target.value })} required />
               <Input label="Notes (optional)" placeholder="Any notes..." value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />

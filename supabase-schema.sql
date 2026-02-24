@@ -13,8 +13,22 @@ CREATE TYPE asset_type AS ENUM (
 );
 
 CREATE TYPE transaction_type AS ENUM (
-  'buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out'
+  'buy', 'sell', 'dividend', 'split', 'transfer_in', 'transfer_out',
+  'deposit', 'withdrawal', 'margin_interest',
+  'option_exercise', 'option_assignment', 'option_expiration'
 );
+
+-- Migration for existing databases:
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'deposit';
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'withdrawal';
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'margin_interest';
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'option_exercise';
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'option_assignment';
+-- ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'option_expiration';
+-- ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_quantity_check;
+-- ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_price_per_unit_check;
+
+CREATE TYPE option_type AS ENUM ('call', 'put');
 
 CREATE TYPE broker_source AS ENUM (
   'manual', 'robinhood', 'fidelity', 'schwab', 'other'
@@ -150,8 +164,8 @@ CREATE TABLE transactions (
   portfolio_id      UUID NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
   asset_id          UUID NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
   transaction_type  transaction_type NOT NULL,
-  quantity          NUMERIC NOT NULL CHECK (quantity >= 0),
-  price_per_unit    NUMERIC NOT NULL CHECK (price_per_unit >= 0),
+  quantity          NUMERIC NOT NULL,
+  price_per_unit    NUMERIC NOT NULL,
   total_amount      NUMERIC NOT NULL,
   fees              NUMERIC NOT NULL DEFAULT 0 CHECK (fees >= 0),
   currency          TEXT NOT NULL DEFAULT 'USD',
@@ -212,6 +226,33 @@ CREATE INDEX idx_earnings_calendar_earnings_date ON earnings_calendar(earnings_d
 CREATE TRIGGER earnings_calendar_updated_at
   BEFORE UPDATE ON earnings_calendar
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================================
+-- 7b. OPTIONS CONTRACTS  (structured metadata for option assets)
+-- ============================================================================
+CREATE TABLE options_contracts (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  asset_id              UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  underlying_symbol     TEXT NOT NULL,
+  option_type           option_type NOT NULL,
+  strike_price          NUMERIC NOT NULL CHECK (strike_price > 0),
+  expiration_date       DATE NOT NULL,
+  contract_multiplier   INTEGER NOT NULL DEFAULT 100,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_options_contracts_asset ON options_contracts(asset_id);
+CREATE INDEX idx_options_contracts_underlying ON options_contracts(underlying_symbol);
+CREATE INDEX idx_options_contracts_expiration ON options_contracts(expiration_date);
+
+CREATE TRIGGER options_contracts_updated_at
+  BEFORE UPDATE ON options_contracts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Migration for existing databases:
+-- CREATE TYPE option_type AS ENUM ('call', 'put');
+-- CREATE TABLE options_contracts ( ... );  -- full DDL above
 
 -- ============================================================================
 -- 8. AI INSIGHTS  (cached AI analysis)
@@ -390,6 +431,22 @@ CREATE POLICY "Authenticated users can read earnings calendar"
   ON earnings_calendar FOR SELECT
   USING (auth.role() = 'authenticated');
 
+-- ----------  options_contracts (global, read/write for authenticated)  ----------
+ALTER TABLE options_contracts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read options contracts"
+  ON options_contracts FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert options contracts"
+  ON options_contracts FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update options contracts"
+  ON options_contracts FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
 -- ----------  ai_insights  ----------
 ALTER TABLE ai_insights ENABLE ROW LEVEL SECURITY;
 
@@ -442,6 +499,7 @@ GRANT ALL   ON watchlist          TO authenticated;
 GRANT SELECT ON assets            TO authenticated;
 GRANT SELECT ON asset_prices      TO authenticated;
 GRANT SELECT ON earnings_calendar TO authenticated;
+GRANT ALL    ON options_contracts TO authenticated;
 GRANT SELECT ON ai_insights       TO authenticated;
 
 -- ============================================================================

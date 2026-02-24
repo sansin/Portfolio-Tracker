@@ -150,7 +150,11 @@ export default function WatchlistPage() {
 
     const { data: asset } = await supabase
       .from('assets')
-      .upsert({ symbol: addSymbol.toUpperCase(), name: addSymbol.toUpperCase(), asset_type: 'stock' as any }, { onConflict: 'symbol' })
+      .upsert({
+        symbol: addSymbol.toUpperCase(),
+        name: addSymbol.toUpperCase(),
+        asset_type: (await import('@/lib/services/crypto-data')).isKnownCryptoSymbol(addSymbol) ? ('crypto' as any) : ('stock' as any),
+      }, { onConflict: 'symbol' })
       .select('id')
       .single();
 
@@ -356,11 +360,14 @@ export default function WatchlistPage() {
                         <td className="px-4 py-3">
                           <button onClick={() => openStockDetail(item.symbol)} className="text-left group">
                             <div className="flex items-center gap-3">
-                              <div className="h-9 w-9 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-bold text-indigo-400">{item.symbol.slice(0, 2)}</span>
+                              <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0', item.asset_type === 'crypto' ? 'bg-amber-500/10' : 'bg-indigo-500/10')}>
+                                <span className={cn('text-xs font-bold', item.asset_type === 'crypto' ? 'text-amber-400' : 'text-indigo-400')}>{item.asset_type === 'crypto' ? '₿' : item.symbol.slice(0, 2)}</span>
                               </div>
                               <div>
-                                <p className="font-medium text-zinc-100 group-hover:text-indigo-400 transition-colors">{item.symbol}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-medium text-zinc-100 group-hover:text-indigo-400 transition-colors">{item.symbol}</p>
+                                  {item.asset_type === 'crypto' && <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-400 border-amber-500/20">Crypto</Badge>}
+                                </div>
                                 <p className="text-xs text-zinc-500 truncate max-w-[150px]">{item.name}</p>
                               </div>
                             </div>

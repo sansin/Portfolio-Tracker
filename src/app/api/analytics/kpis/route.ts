@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getBulkQuotes } from '@/lib/services/stock-data';
+import { isCashTransaction } from '@/types';
 import {
   calculatePerformance,
   calculateSectorAllocation,
@@ -60,6 +61,9 @@ export async function GET(request: NextRequest) {
     for (const txn of transactions) {
       const asset = (txn as any).asset;
       if (!asset) continue;
+
+      // Skip cash transactions — they don't produce holdings
+      if (isCashTransaction(txn.transaction_type)) continue;
 
       const symbol = asset.symbol;
       allSymbols.add(symbol);
@@ -219,6 +223,9 @@ export async function GET(request: NextRequest) {
     for (const txn of transactions) {
       const asset = (txn as any).asset;
       if (!asset) continue;
+
+      // Skip cash transactions for monthly returns calculation
+      if (isCashTransaction(txn.transaction_type)) continue;
 
       const date = new Date(txn.transaction_date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;

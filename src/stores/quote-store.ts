@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { StockQuote } from '@/lib/services/stock-data';
+import { isKnownCryptoSymbol } from '@/lib/services/crypto-data';
 
 interface QuoteState {
   quotes: Record<string, StockQuote>;
@@ -32,7 +33,12 @@ function isMarketOpen(): boolean {
   return timeInMinutes >= 9 * 60 + 30 && timeInMinutes < 16 * 60;
 }
 
-function getPollingInterval(): number {
+function getPollingInterval(symbols?: string[]): number {
+  // If the list is all-crypto, always poll at 30s (crypto is 24/7)
+  if (symbols && symbols.length > 0 && symbols.every((s) => isKnownCryptoSymbol(s))) {
+    return 30_000;
+  }
+  // If it's a mix or all stock, use market hours
   return isMarketOpen() ? 30_000 : 5 * 60_000;
 }
 
@@ -105,13 +111,14 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
 
     // Set up interval - adapts to market hours
     const poll = () => {
-      const interval = getPollingInterval();
+      const currentSymbols = get()._pollingSymbols;
+      const interval = getPollingInterval(currentSymbols);
 
       const id = setInterval(() => {
         get().fetchQuotes(get()._pollingSymbols);
 
         // Re-check interval in case market opened/closed
-        const newInterval = getPollingInterval();
+        const newInterval = getPollingInterval(get()._pollingSymbols);
         if (newInterval !== interval) {
           clearInterval(id);
           poll();

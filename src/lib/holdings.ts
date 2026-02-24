@@ -3,6 +3,8 @@
  * Used by dashboard, portfolios, portfolio detail, and analytics
  */
 
+import { isCashTransaction, isOptionTransaction } from '@/types';
+
 export interface ComputedHolding {
   assetId: string;
   symbol: string;
@@ -26,6 +28,9 @@ export function buildHoldingsFromTransactions(
 
   for (const t of transactions) {
     if (options?.filterPortfolioId && t.portfolio_id !== options.filterPortfolioId) continue;
+
+    // Skip cash transactions (deposit/withdrawal/margin_interest) — they don't produce holdings
+    if (isCashTransaction(t.transaction_type)) continue;
     
     const key = `${t.portfolio_id}-${t.asset_id}`;
     const existing = holdingsMap.get(key) || {
@@ -52,6 +57,14 @@ export function buildHoldingsFromTransactions(
     } else if (t.transaction_type === 'sell' || t.transaction_type === 'transfer_out') {
       existing.quantity -= qty;
       existing.totalCost = Math.max(0, existing.totalCost - existing.avgCost * qty);
+    } else if (t.transaction_type === 'option_exercise' || t.transaction_type === 'option_assignment') {
+      // Exercise/assignment closes the option position
+      existing.quantity -= qty;
+      existing.totalCost = Math.max(0, existing.totalCost - existing.avgCost * qty);
+    } else if (t.transaction_type === 'option_expiration') {
+      // Expiration — entire position becomes worthless
+      existing.quantity = 0;
+      existing.totalCost = 0;
     }
 
     holdingsMap.set(key, existing);

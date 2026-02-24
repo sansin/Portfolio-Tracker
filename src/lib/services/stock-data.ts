@@ -1,8 +1,18 @@
 /**
- * Stock data service powered by Finnhub.io
- * Free tier: 60 API calls/minute — more than enough for a portfolio tracker.
- * Docs: https://finnhub.io/docs/api
+ * Stock & crypto data service.
+ * Stocks: powered by Finnhub.io (60 API calls/min free tier).
+ * Crypto: powered by CoinGecko (no API key, ~10-30 req/min free tier).
+ *
+ * Symbol routing: crypto symbols (BTC, ETH, …) → CoinGecko; everything else → Finnhub.
  */
+
+import {
+  isKnownCryptoSymbol,
+  getCryptoQuote,
+  getBulkCryptoQuotes,
+  searchCrypto,
+  getCryptoChartData,
+} from './crypto-data';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
@@ -106,6 +116,11 @@ async function resolveSymbolName(symbol: string): Promise<string> {
  * o (open), d (change), dp (change percent), t (timestamp)
  */
 export async function getQuote(symbol: string): Promise<StockQuote | null> {
+  // Route crypto symbols to CoinGecko
+  if (isKnownCryptoSymbol(symbol)) {
+    return getCryptoQuote(symbol);
+  }
+
   // Check cache first
   const cached = getCachedQuote(symbol);
   if (cached) return cached;
@@ -155,9 +170,33 @@ export async function getBulkQuotes(symbols: string[]): Promise<Map<string, Stoc
   const results = new Map<string, StockQuote>();
   if (symbols.length === 0) return results;
 
+  // Split into crypto vs stock symbols
+  const cryptoSymbols: string[] = [];
+  const stockSymbols: string[] = [];
+  for (const s of symbols) {
+    if (isKnownCryptoSymbol(s)) {
+      cryptoSymbols.push(s);
+    } else {
+      stockSymbols.push(s);
+    }
+  }
+
+  // Fetch crypto quotes in parallel with stock quotes
+  const [cryptoQuotes] = await Promise.all([
+    cryptoSymbols.length > 0
+      ? getBulkCryptoQuotes(cryptoSymbols)
+      : Promise.resolve(new Map<string, StockQuote>()),
+  ]);
+
+  // Merge crypto results
+  for (const [k, v] of cryptoQuotes) results.set(k, v);
+
+  // Now handle stock symbols
+  if (stockSymbols.length === 0) return results;
+
   // Separate cached vs uncached symbols
   const uncached: string[] = [];
-  for (const symbol of symbols) {
+  for (const symbol of stockSymbols) {
     const cached = getCachedQuote(symbol);
     if (cached) {
       results.set(symbol, cached);
@@ -203,7 +242,7 @@ export async function getBulkQuotes(symbols: string[]): Promise<Map<string, Stoc
   }
 
   // Backfill names for any symbols we haven't resolved yet
-  const unknownNames = symbols.filter((s) => results.has(s) && !symbolNameCache.has(s));
+  const unknownNames = stockSymbols.filter((s) => results.has(s) && !symbolNameCache.has(s));
   if (unknownNames.length > 0) {
     const namePromises = unknownNames.map(async (s) => {
       const name = await resolveSymbolName(s);
@@ -249,9 +288,40 @@ export async function getCompanyProfile(symbol: string): Promise<{ sector: strin
 // ---- Symbol Search ----
 
 /**
- * Search stocks by name or symbol using Finnhub symbol search.
+ * Search stocks by name or symbol using Finnhub symbol search,
+ * merged with CoinGecko crypto results.
  */
 export async function searchStocks(query: string): Promise<StockSearchResult[]> {
+  // Launch stock + crypto search in parallel
+  const [stockResults, cryptoResults] = await Promise.all([
+    searchStocksFinnhub(query),
+    searchCrypto(query),
+  ]);
+
+  // Merge results: stocks first, then crypto, deduped by symbol
+  const seen = new Set<string>();
+  const merged: StockSearchResult[] = [];
+
+  for (const r of stockResults) {
+    if (!seen.has(r.symbol)) {
+      seen.add(r.symbol);
+      merged.push(r);
+    }
+  }
+  for (const r of cryptoResults) {
+    if (!seen.has(r.symbol)) {
+      seen.add(r.symbol);
+      merged.push(r);
+    }
+  }
+
+  return merged.slice(0, 12);
+}
+
+/**
+ * Search stocks from Finnhub only (internal helper).
+ */
+async function searchStocksFinnhub(query: string): Promise<StockSearchResult[]> {
   try {
     const res = await fetch(
       `${FINNHUB_BASE}/search?q=${encodeURIComponent(query)}&token=${finnhubToken()}`
@@ -427,12 +497,17 @@ function formatDateForRange(timestamp: number, range: ChartRange): string {
 
 /**
  * Fetch chart data (time series) for a symbol over a given range.
- * Tries Finnhub /stock/candle first, falls back to Yahoo Finance.
+ * Routes crypto symbols to CoinGecko, stocks to Finnhub/Yahoo.
  */
 export async function getChartData(
   symbol: string,
   range: ChartRange
 ): Promise<ChartDataPoint[]> {
+  // Route crypto to CoinGecko chart
+  if (isKnownCryptoSymbol(symbol)) {
+    return getCryptoChartData(symbol, range);
+  }
+
   // Try Finnhub first
   const finnhubPoints = await getChartDataFinnhub(symbol, range);
   if (finnhubPoints.length > 0) return finnhubPoints;

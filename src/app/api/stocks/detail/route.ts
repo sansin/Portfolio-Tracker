@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getQuote, getCompanyProfile } from '@/lib/services/stock-data';
+import { isKnownCryptoSymbol, getCryptoDetail } from '@/lib/services/crypto-data';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
@@ -22,6 +23,22 @@ export async function GET(request: NextRequest) {
 
   try {
     const sym = symbol.toUpperCase();
+
+    // Route crypto symbols to CoinGecko
+    if (isKnownCryptoSymbol(sym)) {
+      const detail = await getCryptoDetail(sym);
+      if (!detail) {
+        return NextResponse.json({ error: 'Crypto not found' }, { status: 404 });
+      }
+      return NextResponse.json({
+        ...detail,
+        peRatio: 0,
+        beta: null,
+        dividendYield: null,
+        exchange: 'Crypto',
+        logo: null,
+      });
+    }
 
     // Fetch quote, profile, and basic financials in parallel
     const [quote, profile, metricsRes] = await Promise.all([

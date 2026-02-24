@@ -20,6 +20,8 @@ import { ROUTES } from '@/lib/constants';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import TrendChart from '@/components/charts/TrendChart';
 import { useStockDetail } from '@/contexts/stock-detail-context';
+import { isCashTransaction, optionAssetSymbol, formatOptionSymbol, parseOptionAssetSymbol } from '@/types';
+import { isKnownCryptoSymbol } from '@/lib/services/crypto-data';
 
 interface Holding {
   assetId: string;
@@ -59,6 +61,7 @@ export default function PortfolioDetailPage() {
   const [showAddTx, setShowAddTx] = React.useState(false);
   const [addingTx, setAddingTx] = React.useState(false);
   const holdingsRef = React.useRef<Holding[]>([]);
+  const [txAssetClass, setTxAssetClass] = React.useState<'stock' | 'option' | 'cash'>('stock');
   const [txForm, setTxForm] = React.useState({
     symbol: '',
     transaction_type: 'buy',
@@ -67,6 +70,11 @@ export default function PortfolioDetailPage() {
     fees: '',
     transaction_date: new Date().toISOString().split('T')[0],
     notes: '',
+    // Option fields
+    underlying_symbol: '',
+    option_type: 'call' as 'call' | 'put',
+    strike_price: '',
+    expiration_date: '',
   });
 
   // Edit transaction state
@@ -139,6 +147,9 @@ export default function PortfolioDetailPage() {
 
     const holdingsMap = new Map<string, Holding>();
     txs.forEach((t: any) => {
+      // Skip cash transactions — they don't produce holdings
+      if (isCashTransaction(t.transaction_type)) return;
+
       const existing = holdingsMap.get(t.asset_id) || {
         assetId: t.asset_id,
         symbol: t.asset?.symbol || '',
@@ -214,10 +225,35 @@ export default function PortfolioDetailPage() {
     e.preventDefault();
     setAddingTx(true);
     const supabase = createClient();
+    const isCash = isCashTransaction(txForm.transaction_type);
+    const isOpt = txAssetClass === 'option';
+
+    // Determine symbol
+    let symbolUp: string;
+    let assetName: string;
+    let assetTypeVal: string;
+
+    if (isCash) {
+      symbolUp = '$CASH';
+      assetName = 'Cash';
+      assetTypeVal = 'other';
+    } else if (isOpt) {
+      symbolUp = optionAssetSymbol(txForm.underlying_symbol.toUpperCase(), txForm.option_type, parseFloat(txForm.strike_price), txForm.expiration_date);
+      assetName = formatOptionSymbol(txForm.underlying_symbol.toUpperCase(), txForm.option_type, parseFloat(txForm.strike_price), txForm.expiration_date);
+      assetTypeVal = 'option';
+    } else {
+      symbolUp = txForm.symbol.toUpperCase();
+      assetName = symbolUp;
+      assetTypeVal = isKnownCryptoSymbol(symbolUp) ? 'crypto' : 'stock';
+    }
 
     const { data: asset, error: assetError } = await supabase
       .from('assets')
-      .upsert({ symbol: txForm.symbol.toUpperCase(), name: txForm.symbol.toUpperCase(), asset_type: 'stock' as any }, { onConflict: 'symbol' })
+      .upsert({
+        symbol: symbolUp,
+        name: assetName,
+        asset_type: assetTypeVal as any,
+      }, { onConflict: 'symbol' })
       .select('id')
       .single();
 
@@ -227,17 +263,30 @@ export default function PortfolioDetailPage() {
       return;
     }
 
-    const qty = parseFloat(txForm.quantity);
+    // Upsert option contract metadata
+    if (isOpt) {
+      await supabase.from('options_contracts').upsert({
+        asset_id: asset.id,
+        underlying_symbol: txForm.underlying_symbol.toUpperCase(),
+        option_type: txForm.option_type,
+        strike_price: parseFloat(txForm.strike_price),
+        expiration_date: txForm.expiration_date,
+      }, { onConflict: 'asset_id' } as any);
+    }
+
+    const qty = isCash ? 1 : parseFloat(txForm.quantity);
     const price = parseFloat(txForm.price_per_unit);
     const fees = parseFloat(txForm.fees || '0');
-    const totalAmount = qty * price + fees;
+    const totalAmount = isCash
+      ? (txForm.transaction_type === 'deposit' ? Math.abs(price) : -Math.abs(price))
+      : qty * price + fees;
 
     const { error } = await supabase.from('transactions').insert({
       portfolio_id: portfolioId,
       asset_id: asset.id,
       transaction_type: txForm.transaction_type as any,
       quantity: qty,
-      price_per_unit: price,
+      price_per_unit: Math.abs(price),
       total_amount: totalAmount,
       fees,
       transaction_date: txForm.transaction_date,
@@ -250,7 +299,8 @@ export default function PortfolioDetailPage() {
     } else {
       toast('success', 'Transaction added');
       setShowAddTx(false);
-      setTxForm({ symbol: '', transaction_type: 'buy', quantity: '', price_per_unit: '', fees: '', transaction_date: new Date().toISOString().split('T')[0], notes: '' });
+      setTxAssetClass('stock');
+      setTxForm({ symbol: '', transaction_type: 'buy', quantity: '', price_per_unit: '', fees: '', transaction_date: new Date().toISOString().split('T')[0], notes: '', underlying_symbol: '', option_type: 'call', strike_price: '', expiration_date: '' });
       loadPortfolio();
     }
     setAddingTx(false);
@@ -407,9 +457,11 @@ export default function PortfolioDetailPage() {
                 {portfolio.holdings.map((h) => (
                   <div key={h.assetId} className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <button onClick={() => openStockDetail(h.symbol)} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                        <span className="text-sm font-semibold text-white">{h.symbol}</span>
-                        <span className="text-xs text-zinc-500 truncate max-w-[120px]">{h.name}</span>
+                      <button onClick={() => openStockDetail(parseOptionAssetSymbol(h.symbol)?.underlying || h.symbol)} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                        <span className="text-sm font-semibold text-white">{parseOptionAssetSymbol(h.symbol) ? h.name : h.symbol}</span>
+                        {isKnownCryptoSymbol(h.symbol) && <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-400 border-amber-500/20">Crypto</Badge>}
+                        {parseOptionAssetSymbol(h.symbol) && <Badge variant="warning" className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">Option</Badge>}
+                        {!parseOptionAssetSymbol(h.symbol) && <span className="text-xs text-zinc-500 truncate max-w-[120px]">{h.name}</span>}
                       </button>
                       <span className="text-sm font-medium text-white tabular-nums">{formatCurrency(h.totalValue)}</span>
                     </div>
@@ -454,7 +506,7 @@ export default function PortfolioDetailPage() {
                   <tbody>
                     {portfolio.holdings.map((h) => (
                       <tr key={h.assetId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                        <td className="px-6 py-4"><button onClick={() => openStockDetail(h.symbol)} className="text-left group"><p className="font-medium text-zinc-100 group-hover:text-indigo-400 transition-colors">{h.symbol}</p><p className="text-xs text-zinc-500">{h.name}</p></button></td>
+                        <td className="px-6 py-4"><button onClick={() => openStockDetail(parseOptionAssetSymbol(h.symbol)?.underlying || h.symbol)} className="text-left group"><div className="flex items-center gap-1.5"><p className="font-medium text-zinc-100 group-hover:text-indigo-400 transition-colors">{parseOptionAssetSymbol(h.symbol) ? h.name : h.symbol}</p>{isKnownCryptoSymbol(h.symbol) && <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-400 border-amber-500/20">Crypto</Badge>}{parseOptionAssetSymbol(h.symbol) && <Badge variant="warning" className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">Option</Badge>}</div>{!parseOptionAssetSymbol(h.symbol) && <p className="text-xs text-zinc-500">{h.name}</p>}</button></td>
                         <td className="text-right px-6 py-4 text-sm text-zinc-300 tabular-nums">{formatQuantity(h.quantity)}</td>
                         <td className="text-right px-6 py-4 text-sm text-zinc-300 tabular-nums">{formatCurrency(h.avgCost)}</td>
                         <td className="text-right px-6 py-4 text-sm text-zinc-300 tabular-nums">{formatCurrency(h.currentPrice)}</td>
@@ -498,7 +550,11 @@ export default function PortfolioDetailPage() {
                       <tr key={t.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                         <td className="px-6 py-4 text-sm text-zinc-400">{formatDate(t.transaction_date)}</td>
                         <td className="px-6 py-4">
-                          <Badge variant={t.transaction_type === 'buy' || t.transaction_type === 'transfer_in' ? 'success' : t.transaction_type === 'sell' || t.transaction_type === 'transfer_out' ? 'danger' : 'info'}>
+                          <Badge variant={
+                            t.transaction_type === 'buy' || t.transaction_type === 'transfer_in' || t.transaction_type === 'deposit' ? 'success'
+                            : t.transaction_type === 'sell' || t.transaction_type === 'transfer_out' || t.transaction_type === 'withdrawal' || t.transaction_type === 'margin_interest' ? 'danger'
+                            : 'info'
+                          }>
                             {t.transaction_type.replaceAll('_', ' ')}
                           </Badge>
                         </td>
@@ -554,23 +610,105 @@ export default function PortfolioDetailPage() {
         </ModalHeader>
         <form onSubmit={handleAddTransaction}>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Symbol" placeholder="AAPL" value={txForm.symbol} onChange={(e) => setTxForm({ ...txForm, symbol: e.target.value })} onBlur={async () => {
-                const sym = txForm.symbol.trim().toUpperCase();
-                if (sym && !txForm.price_per_unit) {
-                  try {
-                    const res = await fetch(`/api/stocks/quote?symbols=${encodeURIComponent(sym)}`);
-                    const data = await res.json();
-                    const price = data.quotes?.[sym]?.price;
-                    if (price) setTxForm((prev) => ({ ...prev, price_per_unit: String(price) }));
-                  } catch { /* ignore */ }
-                }
-              }} required />
-              <Select label="Type" name="transaction_type" value={txForm.transaction_type} onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value })} options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }, { value: 'dividend', label: 'Dividend' }, { value: 'transfer_in', label: 'Transfer In' }, { value: 'transfer_out', label: 'Transfer Out' }]} />
+            {/* Asset class toggle */}
+            <div>
+              <label className="text-xs text-zinc-400 uppercase tracking-wider mb-1.5 block">Asset Class</label>
+              <div className="flex gap-2">
+                {(['stock', 'option', 'cash'] as const).map((cls) => (
+                  <button
+                    key={cls}
+                    type="button"
+                    onClick={() => {
+                      setTxAssetClass(cls);
+                      if (cls === 'cash') {
+                        setTxForm((f) => ({ ...f, transaction_type: 'deposit', symbol: '$CASH', quantity: '1' }));
+                      } else if (cls === 'option') {
+                        setTxForm((f) => ({ ...f, transaction_type: 'buy', symbol: '' }));
+                      } else {
+                        setTxForm((f) => ({ ...f, transaction_type: 'buy', symbol: f.symbol === '$CASH' ? '' : f.symbol }));
+                      }
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border',
+                      txAssetClass === cls
+                        ? cls === 'option' ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : cls === 'cash' ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' : 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+                        : 'text-zinc-400 border-zinc-700/50 hover:text-zinc-200 hover:bg-zinc-800'
+                    )}
+                  >
+                    {cls === 'stock' ? 'Stock / ETF / Crypto' : cls === 'option' ? 'Option' : 'Cash'}
+                  </button>
+                ))}
+              </div>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Quantity" type="number" step="any" placeholder="100" value={txForm.quantity} onChange={(e) => setTxForm({ ...txForm, quantity: e.target.value })} required />
-              <Input label="Price per unit" type="number" step="any" placeholder="150.00 (auto-fills)" value={txForm.price_per_unit} onChange={(e) => setTxForm({ ...txForm, price_per_unit: e.target.value })} required />
+              {txAssetClass === 'option' ? (
+                <Input label="Underlying Symbol" placeholder="AAPL" value={txForm.underlying_symbol} onChange={(e) => setTxForm({ ...txForm, underlying_symbol: e.target.value })} required />
+              ) : (
+                <Input label="Symbol" placeholder="AAPL" value={txForm.symbol} onChange={(e) => setTxForm({ ...txForm, symbol: e.target.value })} onBlur={async () => {
+                  const sym = txForm.symbol.trim().toUpperCase();
+                  if (sym && !txForm.price_per_unit) {
+                    try {
+                      const res = await fetch(`/api/stocks/quote?symbols=${encodeURIComponent(sym)}`);
+                      const data = await res.json();
+                      const price = data.quotes?.[sym]?.price;
+                      if (price) setTxForm((prev) => ({ ...prev, price_per_unit: String(price) }));
+                    } catch { /* ignore */ }
+                  }
+                }} required={txAssetClass !== 'cash'} disabled={txAssetClass === 'cash'} />
+              )}
+              <Select label="Transaction" name="transaction_type" value={txForm.transaction_type} onChange={(e) => {
+                const newType = e.target.value;
+                if (isCashTransaction(newType)) {
+                  setTxAssetClass('cash');
+                  setTxForm({ ...txForm, transaction_type: newType, symbol: '$CASH', quantity: '1', price_per_unit: '' });
+                } else {
+                  setTxForm({ ...txForm, transaction_type: newType, symbol: txForm.symbol === '$CASH' ? '' : txForm.symbol });
+                }
+              }} options={txAssetClass === 'option' ? [
+                { value: 'buy', label: 'Buy to Open' },
+                { value: 'sell', label: 'Sell to Close' },
+                { value: 'option_exercise', label: 'Exercise' },
+                { value: 'option_assignment', label: 'Assignment' },
+                { value: 'option_expiration', label: 'Expiration' },
+              ] : txAssetClass === 'cash' ? [
+                { value: 'deposit', label: 'Deposit' },
+                { value: 'withdrawal', label: 'Withdrawal' },
+                { value: 'margin_interest', label: 'Margin Interest' },
+              ] : [
+                { value: 'buy', label: 'Buy' },
+                { value: 'sell', label: 'Sell' },
+                { value: 'dividend', label: 'Dividend' },
+                { value: 'transfer_in', label: 'Transfer In' },
+                { value: 'transfer_out', label: 'Transfer Out' },
+              ]} />
+            </div>
+
+            {/* Option contract fields */}
+            {txAssetClass === 'option' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-purple-500/5 border border-purple-500/10 rounded-lg">
+                <Select label="Type" value={txForm.option_type} onChange={(e) => setTxForm({ ...txForm, option_type: e.target.value as 'call' | 'put' })} options={[{ value: 'call', label: 'Call' }, { value: 'put', label: 'Put' }]} />
+                <Input label="Strike" type="number" step="any" placeholder="250" value={txForm.strike_price} onChange={(e) => setTxForm({ ...txForm, strike_price: e.target.value })} required />
+                <Input label="Expiration" type="date" value={txForm.expiration_date} onChange={(e) => setTxForm({ ...txForm, expiration_date: e.target.value })} required />
+                <div className="flex items-end">
+                  <p className="text-xs text-zinc-500 pb-2">
+                    {txForm.underlying_symbol && txForm.strike_price && txForm.expiration_date
+                      ? formatOptionSymbol(txForm.underlying_symbol.toUpperCase(), txForm.option_type, parseFloat(txForm.strike_price), txForm.expiration_date)
+                      : 'Preview'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {txAssetClass === 'cash' ? (
+                <Input label="Amount (USD)" type="number" step="any" placeholder="1000.00" value={txForm.price_per_unit} onChange={(e) => setTxForm({ ...txForm, price_per_unit: e.target.value })} required />
+              ) : (
+                <>
+                  <Input label={txAssetClass === 'option' ? 'Contracts' : 'Quantity'} type="number" step="any" placeholder="100" value={txForm.quantity} onChange={(e) => setTxForm({ ...txForm, quantity: e.target.value })} required />
+                  <Input label={txAssetClass === 'option' ? 'Premium per contract' : 'Price per unit'} type="number" step="any" placeholder="150.00 (auto-fills)" value={txForm.price_per_unit} onChange={(e) => setTxForm({ ...txForm, price_per_unit: e.target.value })} required />
+                </>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" placeholder="0.00" value={txForm.fees} onChange={(e) => setTxForm({ ...txForm, fees: e.target.value })} />
@@ -605,12 +743,24 @@ export default function PortfolioDetailPage() {
                   { value: 'dividend', label: 'Dividend' },
                   { value: 'transfer_in', label: 'Transfer In' },
                   { value: 'transfer_out', label: 'Transfer Out' },
+                  { value: 'deposit', label: 'Deposit' },
+                  { value: 'withdrawal', label: 'Withdrawal' },
+                  { value: 'margin_interest', label: 'Margin Interest' },
+                  { value: 'option_exercise', label: 'Option Exercise' },
+                  { value: 'option_assignment', label: 'Option Assignment' },
+                  { value: 'option_expiration', label: 'Option Expiration' },
                 ]}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
-              <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+              {isCashTransaction(editForm.transaction_type) ? (
+                <Input label="Amount (USD)" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+              ) : (
+                <>
+                  <Input label="Quantity" type="number" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
+                  <Input label="Price per unit" type="number" step="any" value={editForm.price_per_unit} onChange={(e) => setEditForm({ ...editForm, price_per_unit: e.target.value })} required />
+                </>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Fees" type="number" step="any" value={editForm.fees} onChange={(e) => setEditForm({ ...editForm, fees: e.target.value })} />

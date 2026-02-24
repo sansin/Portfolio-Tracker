@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase/client';
-import type { TransactionRow, TransactionWithAsset } from '@/types';
+import type { TransactionWithAsset } from '@/types';
 
 interface TransactionFilters {
   portfolioId?: string;
@@ -27,10 +27,17 @@ interface TransactionState {
     transaction_type: string;
     quantity: number;
     price_per_unit: number;
+    total_amount?: number;
     fees?: number;
     transaction_date: string;
     notes?: string;
     broker_source?: string;
+    // Option fields (passed to API route)
+    asset_type?: string;
+    underlying_symbol?: string;
+    option_type?: string;
+    strike_price?: number;
+    expiration_date?: string;
   }) => Promise<boolean>;
   updateTransaction: (id: string, data: {
     portfolio_id?: string;
@@ -94,46 +101,27 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   },
 
   addTransaction: async (data) => {
-    const supabase = createClient();
+    // Route through the API for full support (options contracts, crypto detection, etc.)
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to add transaction' }));
+        set({ error: err.error || 'Failed to add transaction' });
+        return false;
+      }
 
-    // First, ensure the asset exists (upsert by symbol)
-    const { data: asset, error: assetError } = await supabase
-      .from('assets')
-      .upsert(
-        { symbol: data.symbol.toUpperCase(), name: data.symbol.toUpperCase(), asset_type: 'stock' },
-        { onConflict: 'symbol' }
-      )
-      .select('id')
-      .single();
-
-    if (assetError || !asset) {
-      set({ error: assetError?.message || 'Failed to find/create asset' });
+      // Refresh
+      await get().fetchTransactions();
+      return true;
+    } catch (e: any) {
+      set({ error: e.message || 'Network error' });
       return false;
     }
-
-    const totalAmount = data.quantity * data.price_per_unit + (data.fees || 0);
-
-    const { error } = await supabase.from('transactions').insert({
-      portfolio_id: data.portfolio_id,
-      asset_id: asset.id,
-      transaction_type: data.transaction_type as any,
-      quantity: data.quantity,
-      price_per_unit: data.price_per_unit,
-      total_amount: totalAmount,
-      fees: data.fees || 0,
-      transaction_date: data.transaction_date,
-      notes: data.notes || null,
-      broker_source: (data.broker_source || 'manual') as any,
-    });
-
-    if (error) {
-      set({ error: error.message });
-      return false;
-    }
-
-    // Refresh
-    await get().fetchTransactions();
-    return true;
   },
 
   updateTransaction: async (id, data) => {

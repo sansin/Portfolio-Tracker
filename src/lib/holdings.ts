@@ -25,13 +25,29 @@ export function buildHoldingsFromTransactions(
   options?: { filterPortfolioId?: string }
 ): ComputedHolding[] {
   const holdingsMap = new Map<string, ComputedHolding>();
+  const cashMap = new Map<string, number>(); // portfolioId -> cash balance
 
   for (const t of transactions) {
     if (options?.filterPortfolioId && t.portfolio_id !== options.filterPortfolioId) continue;
 
-    // Skip cash transactions (deposit/withdrawal/margin_interest) — they don't produce holdings
-    if (isCashTransaction(t.transaction_type)) continue;
-    
+    if (isCashTransaction(t.transaction_type)) {
+      // Track cash by portfolio
+      const pid = t.portfolio_id;
+      let cash = cashMap.get(pid) || 0;
+      const qty = Number(t.quantity);
+      const price = Number(t.price_per_unit);
+      const amount = qty * price;
+      if (t.transaction_type === 'deposit') {
+        cash += amount;
+      } else if (t.transaction_type === 'withdrawal') {
+        cash -= amount;
+      } else if (t.transaction_type === 'margin_interest') {
+        cash -= Math.abs(amount);
+      }
+      cashMap.set(pid, cash);
+      continue;
+    }
+
     const key = `${t.portfolio_id}-${t.asset_id}`;
     const existing = holdingsMap.get(key) || {
       assetId: t.asset_id,
@@ -68,6 +84,21 @@ export function buildHoldingsFromTransactions(
     }
 
     holdingsMap.set(key, existing);
+  }
+
+  // Add synthetic cash holding for each portfolio
+  for (const [portfolioId, cash] of cashMap.entries()) {
+    if (cash !== 0) {
+      holdingsMap.set(`${portfolioId}-CASH`, {
+        assetId: 'CASH',
+        symbol: 'CASH',
+        name: 'Cash',
+        quantity: cash,
+        avgCost: 1,
+        totalCost: cash,
+        portfolioId,
+      });
+    }
   }
 
   return Array.from(holdingsMap.values()).filter((h) => h.quantity > 0);
@@ -113,5 +144,5 @@ export function computePortfolioValues(
  * Get unique symbols from holdings
  */
 export function getUniqueSymbols(holdings: ComputedHolding[]): string[] {
-  return [...new Set(holdings.map((h) => h.symbol).filter(Boolean))];
+  return [...new Set(holdings.map((h) => h.symbol).filter((s) => s && s !== 'CASH' && s !== '$CASH'))];
 }

@@ -56,18 +56,34 @@ export async function GET(request: NextRequest) {
 
     // Aggregate holdings per portfolio
     const holdingsMap = new Map<string, Map<string, HoldingData>>();
+    const cashMap = new Map<string, number>(); // portfolioId -> cash balance
     const allSymbols = new Set<string>();
 
     for (const txn of transactions) {
       const asset = (txn as any).asset;
       if (!asset) continue;
 
-      // Skip cash transactions — they don't produce holdings
-      if (isCashTransaction(txn.transaction_type)) continue;
+      const pId = txn.portfolio_id;
+
+      // Track cash transactions separately
+      if (isCashTransaction(txn.transaction_type)) {
+        let cash = cashMap.get(pId) || 0;
+        const qty = Number(txn.quantity || 0);
+        const price = Number(txn.price_per_unit || 0);
+        const amount = qty * price;
+        if (txn.transaction_type === 'deposit') {
+          cash += amount;
+        } else if (txn.transaction_type === 'withdrawal') {
+          cash -= amount;
+        } else if (txn.transaction_type === 'margin_interest') {
+          cash -= Math.abs(amount);
+        }
+        cashMap.set(pId, cash);
+        continue;
+      }
 
       const symbol = asset.symbol;
       allSymbols.add(symbol);
-      const pId = txn.portfolio_id;
 
       if (!holdingsMap.has(pId)) holdingsMap.set(pId, new Map());
       const pHoldings = holdingsMap.get(pId)!;
@@ -95,6 +111,20 @@ export async function GET(request: NextRequest) {
       } else if (txn.transaction_type === 'sell' || txn.transaction_type === 'transfer_out') {
         h.quantity = Math.max(0, h.quantity - qty);
       }
+    }
+
+    // Add synthetic cash holdings per portfolio
+    for (const [pId, cash] of cashMap.entries()) {
+      if (cash === 0) continue;
+      if (!holdingsMap.has(pId)) holdingsMap.set(pId, new Map());
+      holdingsMap.get(pId)!.set('CASH', {
+        symbol: 'CASH',
+        name: 'Cash',
+        quantity: cash,
+        avgCost: 1,
+        currentPrice: 1,
+        sector: undefined,
+      });
     }
 
     // Fetch live quotes
@@ -130,11 +160,13 @@ export async function GET(request: NextRequest) {
     const riskMetrics = calculateRiskMetrics(allHoldings, portfolios.length);
     const overlaps = findOverlappingHoldings(portfolioHoldings);
 
-    // Build symbol-quantity pairs for chart
-    const holdingsList = allHoldings.map((h) => ({
-      symbol: h.symbol,
-      quantity: h.quantity,
-    }));
+    // Build symbol-quantity pairs for chart (exclude CASH — no market data)
+    const holdingsList = allHoldings
+      .filter((h) => h.symbol !== 'CASH' && h.symbol !== '$CASH')
+      .map((h) => ({
+        symbol: h.symbol,
+        quantity: h.quantity,
+      }));
 
     // ── holdingsTable: per-holding detail rows (aggregated by symbol) ──
     const totalPortfolioValue = allHoldings.reduce(

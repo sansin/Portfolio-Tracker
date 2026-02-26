@@ -415,8 +415,8 @@ export default function AnalyticsPage() {
             <span className="text-zinc-400 text-xs font-medium uppercase tracking-wider">Portfolio Value</span>
             <Target className="w-4 h-4 text-indigo-400" />
           </div>
-          <p className="text-2xl font-bold text-white">{formatCurrencyWhole(performance.totalValue)}</p>
-          <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrencyWhole(performance.totalCost)}</p>
+          <p className="text-2xl font-bold text-white">{formatCurrency(performance.totalValue)}</p>
+          <p className="text-xs text-zinc-500 mt-0.5">Cost: {formatCurrency(performance.totalCost)}</p>
         </CardContent>
       </Card>
 
@@ -427,10 +427,10 @@ export default function AnalyticsPage() {
             {performance.totalGain >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
           </div>
           <p className={cn('text-xl font-bold', getChangeColor(performance.totalGain))}>
-            {formatCurrencyWhole(performance.totalGain)}
+            {formatCurrency(performance.totalGain)}
           </p>
           <p className={cn('text-xs mt-0.5', getChangeColor(performance.totalGainPercent))}>
-            {formatPercentWhole(performance.totalGainPercent)}
+            {formatPercent(performance.totalGainPercent)}
           </p>
         </CardContent>
       </Card>
@@ -442,10 +442,10 @@ export default function AnalyticsPage() {
             {performance.dayChange >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
           </div>
           <p className={cn('text-xl font-bold', getChangeColor(performance.dayChange))}>
-            {formatCurrencyWhole(performance.dayChange)}
+            {formatCurrency(performance.dayChange)}
           </p>
           <p className={cn('text-xs mt-0.5', getChangeColor(performance.dayChangePercent))}>
-            {formatPercentWhole(performance.dayChangePercent)}
+            {formatPercent(performance.dayChangePercent)}
           </p>
         </CardContent>
       </Card>

@@ -22,6 +22,7 @@ import TrendChart from '@/components/charts/TrendChart';
 import { useStockDetail } from '@/contexts/stock-detail-context';
 import { isCashTransaction, optionAssetSymbol, formatOptionSymbol, parseOptionAssetSymbol } from '@/types';
 import { isKnownCryptoSymbol } from '@/lib/services/crypto-data';
+import { ResponsiveContainer, Treemap, Cell } from 'recharts';
 
 interface Holding {
   assetId: string;
@@ -146,9 +147,23 @@ export default function PortfolioDetailPage() {
     const txs = transactionsRes.data || [];
 
     const holdingsMap = new Map<string, Holding>();
+    let cashBalance = 0;
+
     txs.forEach((t: any) => {
-      // Skip cash transactions — they don't produce holdings
-      if (isCashTransaction(t.transaction_type)) return;
+      // Track cash transactions separately
+      if (isCashTransaction(t.transaction_type)) {
+        const qty = Number(t.quantity);
+        const price = Number(t.price_per_unit);
+        const amount = qty * price;
+        if (t.transaction_type === 'deposit') {
+          cashBalance += amount;
+        } else if (t.transaction_type === 'withdrawal') {
+          cashBalance -= amount;
+        } else if (t.transaction_type === 'margin_interest') {
+          cashBalance -= Math.abs(amount);
+        }
+        return;
+      }
 
       const existing = holdingsMap.get(t.asset_id) || {
         assetId: t.asset_id,
@@ -181,8 +196,24 @@ export default function PortfolioDetailPage() {
 
     const holdings = Array.from(holdingsMap.values()).filter((h) => h.quantity > 0);
 
-    // Fetch live quotes for all holding symbols
-    const uniqueSymbols = [...new Set(holdings.map((h) => h.symbol).filter(Boolean))];
+    // Add synthetic cash holding if there's a cash balance
+    if (cashBalance !== 0) {
+      holdings.push({
+        assetId: 'CASH',
+        symbol: 'CASH',
+        name: 'Cash',
+        quantity: cashBalance,
+        avgCost: 1,
+        totalCost: cashBalance,
+        currentPrice: 1,
+        totalValue: cashBalance,
+        unrealizedPL: 0,
+        unrealizedPLPercent: 0,
+      });
+    }
+
+    // Fetch live quotes for all holding symbols (exclude CASH — no market data)
+    const uniqueSymbols = [...new Set(holdings.map((h) => h.symbol).filter((s) => s && s !== 'CASH' && s !== '$CASH'))];
 
     if (uniqueSymbols.length > 0) {
       const liveQuotes = await fetchQuotes(uniqueSymbols);
@@ -370,7 +401,9 @@ export default function PortfolioDetailPage() {
   }
 
   const trendSymbols = React.useMemo(
-    () => portfolio?.holdings.map((h) => ({ symbol: h.symbol, quantity: h.quantity })) || [],
+    () => portfolio?.holdings
+      .filter((h) => h.symbol !== 'CASH' && h.symbol !== '$CASH')
+      .map((h) => ({ symbol: h.symbol, quantity: h.quantity })) || [],
     [portfolio?.holdings]
   );
 
@@ -391,6 +424,58 @@ export default function PortfolioDetailPage() {
   const totalPL = portfolio.totalValue - portfolio.totalCost;
   const totalPLPercent = portfolio.totalCost > 0 ? (totalPL / portfolio.totalCost) * 100 : 0;
   const marketOpen = isMarketOpen();
+
+  // --- Analytics Tab: Heatmap & Performance Chart ---
+  const analyticsTab = (
+    <div className="space-y-6">
+      {/* Performance Trend Chart */}
+      <ErrorBoundary>
+        <TrendChart
+          symbols={trendSymbols}
+          title={`${portfolio.name} Performance`}
+        />
+      </ErrorBoundary>
+      {/* Heatmap */}
+      {portfolio.holdings.length > 0 && (
+        <ErrorBoundary>
+          <Card className="bg-zinc-800/50 border-zinc-700/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Market Heatmap</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <Treemap
+                  data={portfolio.holdings.map((h) => ({
+                    name: h.symbol,
+                    size: h.totalValue,
+                    changePercent: h.unrealizedPLPercent,
+                  }))}
+                  dataKey="size"
+                  aspectRatio={4 / 3}
+                  content={({ x, y, width, height, name, changePercent }: any) => {
+                    if (width < 40 || height < 30) return <g />;
+                    const bg = changePercent >= 0 ? '#059669' : '#dc2626';
+                    const opacity = Math.min(0.4 + Math.abs(changePercent) * 0.06, 1);
+                    return (
+                      <g>
+                        <rect x={x} y={y} width={width} height={height} fill={bg} fillOpacity={opacity} rx={4} stroke="#18181b" strokeWidth={2} />
+                        <text x={x + width / 2} y={y + height / 2 - 7} textAnchor="middle" fill="#fff" fontSize={width > 70 ? 12 : 10} fontWeight={600}>
+                          {name}
+                        </text>
+                        <text x={x + width / 2} y={y + height / 2 + 10} textAnchor="middle" fill="#e4e4e7" fontSize={10}>
+                          {changePercent >= 0 ? '+' : ''}{changePercent?.toFixed(1)}%
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </ErrorBoundary>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -430,9 +515,9 @@ export default function PortfolioDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-indigo-500/10 via-zinc-800/50 to-zinc-800/50 border-indigo-500/20"><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-3xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalValue)}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Cost</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrencyWhole(portfolio.totalCost)}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Unrealized P&L</p><p className={cn('text-2xl font-bold tabular-nums', getChangeColor(totalPL))}>{formatCurrencyWhole(totalPL)} <span className="text-base">({formatPercentWhole(totalPLPercent)})</span></p></CardContent></Card>
+        <Card className="bg-gradient-to-br from-indigo-500/10 via-zinc-800/50 to-zinc-800/50 border-indigo-500/20"><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Value</p><p className="text-3xl font-bold text-zinc-100 tabular-nums">{formatCurrency(portfolio.totalValue)}</p></CardContent></Card>
+        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Total Cost</p><p className="text-2xl font-bold text-zinc-100 tabular-nums">{formatCurrency(portfolio.totalCost)}</p></CardContent></Card>
+        <Card><CardContent className="p-5"><p className="text-sm text-zinc-400 mb-1">Unrealized P&L</p><p className={cn('text-2xl font-bold tabular-nums', getChangeColor(totalPL))}>{formatCurrency(totalPL)} <span className="text-base">({formatPercent(totalPLPercent)})</span></p></CardContent></Card>
       </div>
 
       <Tabs
@@ -592,12 +677,7 @@ export default function PortfolioDetailPage() {
 
       {activeTab === 'analytics' && (
         portfolio.holdings.length > 0 ? (
-          <ErrorBoundary>
-            <TrendChart
-              symbols={trendSymbols}
-              title={`${portfolio.name} Performance`}
-            />
-          </ErrorBoundary>
+          analyticsTab
         ) : (
           <Card><CardContent className="py-16"><EmptyState icon={<BarChart3 className="h-12 w-12" />} title="No holdings to chart" description="Add transactions to see portfolio performance trends." /></CardContent></Card>
         )

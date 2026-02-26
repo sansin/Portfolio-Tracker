@@ -70,14 +70,17 @@ export default function TrendChart({ symbol, symbols, title, className, external
   const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Stabilize symbols to prevent refetches when content hasn't changed
+  const symbolsKey = symbols ? JSON.stringify(symbols) : '';
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       let url: string;
       if (symbol) {
         url = `/api/stocks/chart?symbol=${encodeURIComponent(symbol)}&range=${period}`;
-      } else if (symbols && symbols.length > 0) {
-        url = `/api/stocks/chart?symbols=${encodeURIComponent(JSON.stringify(symbols))}&range=${period}`;
+      } else if (symbolsKey) {
+        url = `/api/stocks/chart?symbols=${encodeURIComponent(symbolsKey)}&range=${period}`;
       } else {
         setData([]);
         setLoading(false);
@@ -94,7 +97,7 @@ export default function TrendChart({ symbol, symbols, title, className, external
     } finally {
       setLoading(false);
     }
-  }, [symbol, symbols, period]);
+  }, [symbol, symbolsKey, period]);
 
   useEffect(() => {
     fetchData();
